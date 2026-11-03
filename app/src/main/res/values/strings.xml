@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Miauterm</string>
+    <string name="settings_title">Miauterm Settings</string>
+
+    <!-- Generic buttons -->
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="ok">OK</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="retry">Retry</string>
+    <string name="later">Later</string>
+    <string name="settings">Settings</string>
+
+    <!-- Terminal view -->
+    <string name="terminal_screen_desc">Terminal Screen, %1$d columns by %2$d rows</string>
+    <string name="terminal_screen_inactive_desc">Terminal Screen (Inactive)</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="copied_url">Copied URL: %1$s</string>
+    <string name="pasted_image_path">Pasted image path: %1$s</string>
+    <string name="image_save_failed">Failed to save image</string>
+    <string name="clipboard_set_by_program">A terminal program copied text to the clipboard</string>
+
+    <!-- Sessions drawer -->
+    <string name="drawer_sessions">Sessions</string>
+    <string name="drawer_keyboard">Keyboard</string>
+    <string name="drawer_new_session">+ New session</string>
+    <string name="session_label">Session %1$d</string>
+    <string name="close_session">Close session</string>
+    <string name="exit_confirm_title">Exit Session</string>
+    <string name="exit_confirm_message">Do you want to close this terminal session?</string>
+
+    <!-- Search bar -->
+    <string name="search_hint">Search terminal…</string>
+    <string name="search_previous">Previous match</string>
+    <string name="search_next">Next match</string>
+    <string name="search_close">Close search</string>
+
+    <!-- First start -->
+    <string name="bootstrap_progress">Preparing Debian…\nExtracting the root filesystem…</string>
+    <string name="debian_install_failed">Could not install Debian. Free up storage and restart Miauterm.</string>
+    <string name="debian_install_failed_details">Debian could not start: %1$s</string>
+
+    <!-- Storage permission -->
+    <string name="storage_permission_open_failed">Unable to open permission settings</string>
+    <string name="pref_shared_folder_access_title">Download and Documents access</string>
+    <string name="pref_shared_folder_access_summary">Enable access to mount Download and Documents in new Linux sessions.</string>
+    <string name="shared_folder_access_enabled">Download and Documents will be mounted in new Linux sessions.</string>
+    <string name="shared_folder_access_disabled">Sharing is off. Turn it on to request access; running sessions are unchanged.</string>
+    <string name="shared_folder_access_granted_toast">Access enabled for new Linux sessions. Restart a session to use it.</string>
+    <string name="shared_folder_access_denied_toast">Access was not granted. You can still use Debian without shared folders.</string>
+    <string name="shared_folder_permission_denied_title">Storage access not granted</string>
+    <string name="shared_folder_permission_denied_message">Allow storage access in Android app settings to share Download and Documents with Debian.</string>
+    <string name="open_settings">Open settings</string>
+
+    <!-- Updates -->
+    <string name="check_for_updates">GitHub Releases</string>
+    <string name="github_releases_title">Miauterm releases</string>
+    <string name="github_releases_private_message">This project is private. Sign in to GitHub in your browser to view releases and download the APK.</string>
+    <string name="github_releases_open">Open GitHub</string>
+    <string name="update_check_failed">Update check failed: %1$s</string>
+    <string name="update_server_code">Server responded with code %1$d</string>
+    <string name="update_no_asset">No compatible APK asset found in release</string>
+    <string name="update_connect_failed">Failed to connect to GitHub</string>
+    <string name="update_allow_unknown_sources">Please allow Miauterm to install unknown apps</string>
+    <string name="update_available_title">Update Available</string>
+    <string name="update_available_message">A new version of Miauterm is available.\n\nCurrent version: %1$s\nLatest version: %2$s\n\n</string>
+    <string name="update_whats_new">What\'s New:\n</string>
+    <string name="update_button_update">Update</string>
+    <string name="update_up_to_date_message">Miauterm is up to date.</string>
+    <string name="update_settings_open_failed">Failed to open settings: %1$s</string>
+    <string name="update_temp_file_failed">Failed to create temporary update file</string>
+    <string name="update_preparing">Preparing update…</string>
+    <string name="update_connecting">Connecting to download server…</string>
+    <string name="update_downloading_title">Downloading Update</string>
+    <string name="update_downloading_file">Downloading %1$s…</string>
+    <string name="update_progress">%1$d%% (%2$s MB / %3$s MB)</string>
+    <string name="update_download_failed_title">Update Download Failed</string>
+    <string name="update_download_failed_message">Failed to download update: %1$s\n\nWould you like to retry?</string>
+    <string name="update_apk_missing">Downloaded APK file is missing or corrupted</string>
+    <string name="update_verification_failed_title">Update Verification Failed</string>
+    <string name="update_verification_failed_message">The downloaded update could not be verified or its digital signature does not match this app.</string>
+    <string name="update_install_permission_title">Install Permission Required</string>
+    <string name="update_install_permission_message">Miauterm needs permission to install downloaded APK updates. Please enable \'Allow from this source\' for Miauterm in system settings.</string>
+    <string name="update_installer_failed">Failed to launch installer: %1$s</string>
+
+    <!-- Foreground service notification -->
+    <string name="notif_channel_name" translatable="false">Miauterm</string>
+    <string name="notif_channel_description">Miauterm active terminal sessions</string>
+    <string name="notif_sessions">Sessions: %1$d</string>
+    <string name="notif_sessions_wake_lock">Sessions: %1$d (wake lock held)</string>
+    <string name="notif_action_exit">Exit</string>
+    <string name="notif_action_acquire_wakelock">Acquire Wakelock</string>
+    <string name="notif_action_release_wakelock">Release Wakelock</string>
+
+    <!-- Long command notifications -->
+    <string name="notif_cmd_channel_name">Command notifications</string>
+    <string name="notif_cmd_channel_description">Alerts when long-running terminal commands finish</string>
+    <string name="notif_cmd_finished">Command finished</string>
+    <string name="notif_cmd_failed">Command failed (exit code %1$d)</string>
+    <string name="notif_cmd_text">Took %1$s in session %2$d</string>
+
+    <!-- Settings -->
+    <string name="pref_cat_appearance">Appearance &amp; Font</string>
+    <string name="pref_font_title">Terminal Font</string>
+    <string name="pref_theme_title">Color Scheme</string>
+    <string name="pref_font_size_title">Font Size</string>
+    <string name="pref_session_tabs_title">Session tabs</string>
+    <string name="pref_session_tabs_summary">A strip above the terminal for switching between sessions and starting new ones</string>
+    <string name="pref_keep_screen_on_title">Keep Screen On</string>
+    <string name="pref_keep_screen_on_summary">Prevent the display from turning off while terminal is active</string>
+    <string name="pref_secure_screen_title">Secure Screen</string>
+    <string name="pref_secure_screen_summary">Block screenshots and hide app content in recent tasks (FLAG_SECURE)</string>
+
+    <string name="pref_cat_language">Language</string>
+    <string name="pref_language_title">App language</string>
+    <string name="pref_language_system">System default</string>
+
+    <string name="pref_cat_notifications">Notifications &amp; Clipboard</string>
+    <string name="pref_notify_title">Long command notifications</string>
+    <string name="pref_notify_summary">Notify when a command finishes while Miauterm is in the background</string>
+    <string name="pref_notify_threshold_title">Notify after</string>
+    <string name="pref_clipboard_title">Clipboard access from programs</string>
+    <string name="pref_clipboard_summary">Let programs in the terminal (tmux, vim, ssh) copy text to the Android clipboard (OSC 52)</string>
+
+    <string name="pref_cat_files">Files</string>
+
+    <string name="pref_user_isolation_title">Linux account behavior</string>
+    <string name="pref_user_isolation_summary">PRoot emulates Linux IDs; this does not securely isolate accounts from files owned by the app.</string>
+    <string name="pref_cat_debian">Linux system</string>
+    <string name="pref_proot_diagnostics_title">PRoot diagnostics</string>
+    <string name="pref_proot_diagnostics_summary">Save PRoot debug output for new terminal sessions</string>
+    <string name="pref_view_proot_log_title">View diagnostic log</string>
+    <string name="pref_view_proot_log_summary">Open the saved PRoot log</string>
+    <string name="pref_clear_proot_log_title">Clear diagnostic log</string>
+    <string name="pref_failsafe_title">Open failsafe session</string>
+    <string name="pref_failsafe_summary">Open an Android shell in Miauterm private files directory</string>
+    <string name="pref_backup_debian_title">Back up Debian</string>
+    <string name="pref_backup_debian_summary">Save Linux files, permissions and symbolic links to a ZIP file</string>
+    <string name="pref_restore_debian_title">Import Debian backup</string>
+    <string name="pref_restore_debian_summary">Replace the current Debian system from a Miauterm backup</string>
+    <string name="pref_reset_debian_title">Reset system</string>
+    <string name="rootfs_reset_title">Reset %1$s</string>
+    <string name="rootfs_remove_named_title">Delete %1$s</string>
+    <string name="pref_reset_debian_summary">Restore the bundled Debian system to its original state.</string>
+    <string name="rootfs_remove_title">Delete Debian</string>
+    <string name="pref_remove_debian_summary">Permanently delete Debian and its files</string>
+    <string name="pref_cat_terminal">Terminal</string>
+    <string name="pref_extra_keys_title">Customize extra keys</string>
+    <string name="pref_extra_keys_summary"></string>
+    <string name="pref_about_title">About Miauterm</string>
+    <string name="pref_about_summary">Version, project credits and open-source notices</string>
+    <string name="extra_keys_add_key">Add key</string>
+    <string name="extra_keys_custom">Custom text or command</string>
+    <string name="extra_keys_editor_hint"></string>
+    <string name="extra_keys_invalid">Key layout error: %1$s</string>
+    <string name="extra_keys_array_format">Use a nested array, for example [[\"ESC\", \"TAB\"]]</string>
+    <string name="extra_keys_saved">Extra keys saved</string>
+    <string name="extra_keys_reset">Use defaults</string>
+    <string name="proot_log_empty">There are no PRoot diagnostics yet.</string>
+    <string name="proot_log_cleared">PRoot log cleared</string>
+    <string name="proot_log_clear_failed">Could not clear the PRoot log</string>
+    <string name="rootfs_remove_confirm_title">Delete %1$s?</string>
+    <string name="rootfs_remove_confirm_message">This permanently deletes Debian and its files. Miauterm will not reinstall it after deletion. To restore the bundled Debian system, clear Miauterm app data in Android settings.</string>
+    <string name="rootfs_remove_done">Debian was deleted.</string>
+    <string name="close">Close</string>
+    <string name="rootfs_removed_title">Debian is not installed</string>
+    <string name="rootfs_removed_message">Debian was deleted. Clear Miauterm app data in Android settings to install the bundled Debian system again.</string>
+    <string name="debian_reset_confirm_title">Reset %1$s?</string>
+    <string name="debian_reset_confirm_message">This replaces the current Debian system with the bundled original and removes packages and files added since installation. Export a backup first if you need to keep them.</string>
+    <string name="debian_restore_confirm_title">Replace Debian?</string>
+    <string name="debian_restore_confirm_message">The selected backup replaces the current Debian system. Create a backup first if you need to keep it.</string>
+    <string name="debian_operation_running">Working with Debian…</string>
+    <string name="debian_operation_failed">Debian operation failed: %1$s</string>
+    <string name="operation_failed_unknown">unknown error</string>
+    <string name="debian_reset_done">Debian reset.</string>
+    <string name="debian_backup_done">Debian backup saved.</string>
+    <string name="debian_restore_done">Debian backup restored.</string>
+    <string name="debian_backup_filename">miauterm-debian-backup.zip</string>
+    <string name="about_description">A Debian terminal running through PRoot.</string>
+    <string name="about_open_source_notices">Open-source notices</string>
+    <string name="about_notices_unavailable">Could not load the bundled license notices.</string>
+    <string name="about_fork">Miauterm is a fork of Cortex Terminal. The app runs Linux ARM64 root filesystems through PRoot.</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="files_title">Linux files</string>
+    <string name="files_root_label">Linux filesystem</string>
+    <string name="files_locations">Locations</string>
+    <string name="files_locations_summary">Browse the Debian filesystem and, when allowed, shared Android folders.</string>
+    <string name="files_debian_location">Debian root filesystem · proot</string>
+    <string name="files_android_location">Shared Android folders inside Debian</string>
+    <string name="files_read_only">READ ONLY</string>
+    <string name="files_writable">WRITABLE</string>
+    <string name="files_symlink">LINK</string>
+    <string name="files_unavailable">Unable to open this folder.</string>
+    <string name="files_mode_summary">Permissions: %1$04o</string>
+    <string name="files_folder_type">Folder</string>
+    <string name="files_entry_details">%1$s · %2$s · %3$s</string>
+    <string name="files_directory_summary">%1$d items · Open an entry or use its actions menu</string>
+    <string name="files_empty">This folder is empty.</string>
+    <string name="files_list_error">Could not read this folder.</string>
+    <string name="files_more_actions">Actions for %1$s</string>
+    <string name="files_preview_too_large">Preview supports files up to 256 KB.</string>
+    <string name="files_new_file">New file</string>
+    <string name="files_new_folder">New folder</string>
+    <string name="files_go_up">Go up</string>
+    <string name="files_refresh">Refresh</string>
+    <string name="files_open">Open folder</string>
+    <string name="files_preview">Preview</string>
+    <string name="files_edit">Edit text</string>
+    <string name="files_edit_title">Edit %1$s</string>
+    <string name="files_copy_path">Copy Debian path</string>
+    <string name="files_rename">Rename</string>
+    <string name="files_delete">Delete</string>
+    <string name="files_delete_confirm">Delete %1$s and its contents?</string>
+    <string name="files_read_only_folder">This folder is read-only.</string>
+    <string name="files_name_exists">Choose a different name; that path already exists.</string>
+    <string name="files_operation_failed">Could not complete the file operation.</string>
+    <string name="files_invalid_name">Enter a name without slashes or path traversal.</string>
+    <string name="files_edit_too_large">Text editor supports files up to 512 KB.</string>
+    <string name="files_binary_edit_unavailable">Binary files cannot be edited here.</string>
+    <string name="files_saved">File saved.</string>
+    <string name="files_path_copied">Copied Debian path: %1$s</string>
+    <string name="debian_storage_error">Not enough storage space to complete this operation.</string>
+
+    <string name="pref_cat_support">Community &amp; Support</string>
+    <string name="pref_bug_report_title">Send a bug report</string>
+
+    <string name="bug_report_chooser">Send the bug report with</string>
+    <string name="bug_report_failed">The bug report could not be made: %1$s</string>
+
+    <!-- Settings choices -->
+    <string name="font_size_small">Small (10sp)</string>
+    <string name="font_size_compact">Compact (11sp)</string>
+    <string name="font_size_normal">Normal (12sp)</string>
+    <string name="font_size_medium">Medium (14sp)</string>
+    <string name="font_size_large">Large (16sp)</string>
+    <string name="font_size_huge">Huge (18sp)</string>
+    <string name="font_jetbrains_default">JetBrains Mono Nerd Font (Default)</string>
+    <string name="font_system_monospace">System Monospace</string>
+    <string name="font_custom">Custom Font (~/.config/miauterm/font.ttf)</string>
+    <string name="theme_catppuccin_default">Catppuccin Mocha (Default)</string>
+    <string name="threshold_15s">15 seconds</string>
+    <string name="threshold_30s">30 seconds</string>
+    <string name="threshold_1m">1 minute</string>
+    <string name="threshold_5m">5 minutes</string>
+    <!-- Root mode -->
+    <string name="session_root_badge" translatable="false">ROOT</string>
+    <!-- miauterm-cmd -->
+    <string name="api_channel_name">Messages from commands</string>
+    <string name="api_channel_description">Notifications that programs in the terminal show with miauterm-cmd or notify-send</string>
+    <string name="extra_keys_error">~/.config/miauterm/keys: %1$s. The default keys are shown.</string>
+    <string name="pref_cat_sessions">Sessions</string>
+    <string name="pref_restore_sessions_title">Restore sessions</string>
+    <string name="pref_restore_sessions_summary">When Android ends Miauterm, its sessions come back at the next start, in their folders and with the end of their output (the programs in them start anew)</string>
+    <string name="session_restored">restored: Android had ended Miauterm, the programs that ran here have stopped</string>
+    <string name="pref_cat_remote">Remote access</string>
+    <string name="servers_channel_name">Local web servers</string>
+    <string name="servers_channel_description">Web servers that programs in Miauterm start, to open them in the browser</string>
+    <string name="server_notification_title">%1$s serves web pages on port %2$d</string>
+    <string name="server_notification_title_unknown">A web server runs on port %1$d</string>
+    <string name="server_notification_text">Tap to open %1$s</string>
+    <string name="server_open">Open</string>
+    <string name="server_copy_link">Copy link</string>
+    <string name="pref_servers_title">Local web servers</string>
+    <string name="pref_servers_summary">A notification when a program in Miauterm serves web pages (such as npm run dev), to open them in the browser</string>
+    <string name="pref_linux_user_title">Linux login user</string>
+    <string name="pref_linux_user_summary">Leave blank to start as root. Enter the exact name of an existing account in /etc/passwd. Changes apply to new sessions.</string>
+    <string name="linux_user_not_found">Linux account was not found. Create it first or leave blank to use root.</string>
+    <string name="pref_bug_report_summary">Open the Miauterm GitHub issue tracker to report a problem.</string>
+</resources>

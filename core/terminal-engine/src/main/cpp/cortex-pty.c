@@ -1,0 +1,1260 @@
+#define _GNU_SOURCE
+#ifndef CORTEX_HOST_TEST
+#include <jni.h>
+#include <android/log.h>
+#define TAG "MiautermPty"
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
+#else
+#define LOGE(...) do { fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); } while (0)
+#define LOGI(...) do { fprintf(stdout, __VA_ARGS__); fprintf(stdout, "\n"); } while (0)
+#endif
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <signal.h>
+#include <termios.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/syscall.h>
+#include <limits.h>
+#include <time.h>
+#include <dirent.h>
+#include <pthread.h>
+#include "zstd/zstd.h"
+
+static char **clean_env_for_system(char *const envp[], int envCount) {
+    char **new_env = malloc(sizeof(char *) * (envCount + 1));
+    if (!new_env) return (char **)envp;
+    int dst = 0;
+    for (int i = 0; i < envCount; i++) {
+        if (strncmp(envp[i], "LD_PRELOAD=", 11) != 0 &&
+            strncmp(envp[i], "LD_LIBRARY_PATH=", 16) != 0 &&
+            strncmp(envp[i], "GLIBC_TUNABLES=", 15) != 0) {
+            new_env[dst++] = envp[i];
+        }
+    }
+    new_env[dst] = NULL;
+    return new_env;
+}
+
+struct cortex_dirent64 {
+    uint64_t d_ino;
+    int64_t d_off;
+    unsigned short d_reclen;
+    unsigned char d_type;
+    char d_name[];
+};
+
+// Closes the descriptors 3 .. max_fd-1. The open ones are read from /proc/self/fd with plain system
+// calls (this runs between fork and exec in a multithreaded process: no malloc); trying every
+// number took 32765 system calls per session with Android's limit of 32768 open files.
+static void close_all_inherited_fds(int max_fd) {
+    if (max_fd < 3) max_fd = 1024;
+    int dir = open("/proc/self/fd", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dir >= 0) {
+        char buf[4096] __attribute__((aligned(8)));
+        int complete = 1;
+        for (;;) {
+            long n = syscall(SYS_getdents64, dir, buf, sizeof(buf));
+            if (n == 0) break;
+            if (n < 0) {
+                complete = 0;
+                break;
+            }
+            for (long off = 0; off < n;) {
+                struct cortex_dirent64 *d = (struct cortex_dirent64 *)(buf + off);
+                off += d->d_reclen;
+                int fd = 0;
+                const char *c = d->d_name;
+                if (*c < '0' || *c > '9') continue;
+                for (; *c >= '0' && *c <= '9' && fd < max_fd; c++) fd = fd * 10 + (*c - '0');
+                // Closing a listed descriptor does not disturb the listing (it goes by number).
+                if (fd > 2 && fd < max_fd && fd != dir) syscall(SYS_close, fd);
+            }
+        }
+        syscall(SYS_close, dir);
+        if (complete) return;
+    }
+    for (int fd = 3; fd < max_fd; fd++) {
+        syscall(SYS_close, fd);
+    }
+}
+
+
+struct pty_exec {
+    const char *path; // NULL ends the list
+    char *const *argv;
+    char *const *envp;
+    const char *failure; // written when this one cannot be executed
+};
+
+struct pty_spawn {
+    const char *slave_name;
+    const char *cwd;
+    struct pty_exec exec[3]; // tried in order
+    int max_fd;
+};
+
+static void pty_write(const char *text) {
+    if (text) write(STDERR_FILENO, text, strlen(text));
+}
+
+static void pty_write_errno(int err) {
+    char buf[24];
+    int n = sizeof(buf);
+    buf[--n] = '\n';
+    buf[--n] = ')';
+    do {
+        buf[--n] = (char)('0' + err % 10);
+        err /= 10;
+    } while (err > 0 && n > 8);
+    memcpy(buf + n - 8, " (error ", 8);
+    write(STDERR_FILENO, buf + n - 8, sizeof(buf) - (size_t)(n - 8));
+}
+
+static void pty_child(const struct pty_spawn *s) {
+    setsid();
+    int fd = open(s->slave_name, O_RDWR);
+    if (fd < 0) _exit(1);
+#ifdef TIOCSCTTY
+    ioctl(fd, TIOCSCTTY, 0);
+#endif
+    for (int target = 0; target <= 2; target++) {
+        if (fd != target) syscall(SYS_dup3, fd, target, 0);
+    }
+    if (fd > STDERR_FILENO) syscall(SYS_close, fd);
+
+    // The descriptors of the app (including the master side of this terminal) stay with the app
+    close_all_inherited_fds(s->max_fd);
+
+    // After TIOCSCTTY the session's own group is in the foreground already; said again for systems
+    // that do not do it.
+    pid_t pgrp = (pid_t)syscall(SYS_getpid);
+    ioctl(STDIN_FILENO, TIOCSPGRP, &pgrp);
+
+    struct termios tios;
+    memset(&tios, 0, sizeof(struct termios));
+    if (tcgetattr(STDIN_FILENO, &tios) == 0) {
+        tios.c_iflag |= (ICRNL | IXON);
+        tios.c_oflag |= (OPOST | ONLCR);
+        tios.c_cflag |= (CS8 | CREAD);
+        tios.c_lflag |= (ISIG | ICANON | ECHO | ECHOE | ECHOK | ECHOCTL | ECHOKE | IEXTEN);
+        tcsetattr(STDIN_FILENO, TCSANOW, &tios);
+    }
+
+    // Default dispositions for the signals the app may ignore (an ignored signal stays ignored
+    // across exec), and nothing blocked. A zeroed kernel sigaction is SIG_DFL with an empty mask on
+    // every architecture; the kernel's signal set is 8 bytes.
+    static const int defaults[] = { SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGPIPE, SIGTSTP, SIGTTIN, SIGTTOU };
+    unsigned long kernel_action[8];
+    memset(kernel_action, 0, sizeof(kernel_action));
+    for (size_t i = 0; i < sizeof(defaults) / sizeof(defaults[0]); i++) {
+        syscall(SYS_rt_sigaction, defaults[i], kernel_action, NULL, 8);
+    }
+    uint64_t no_signals = 0;
+    syscall(SYS_rt_sigprocmask, SIG_SETMASK, &no_signals, NULL, 8);
+
+    if (s->cwd && chdir(s->cwd) != 0) {
+        chdir("/");
+    }
+
+    for (int i = 0; i < 3 && s->exec[i].path; i++) {
+        execve(s->exec[i].path, s->exec[i].argv, s->exec[i].envp);
+        int err = errno;
+        if (s->exec[i].failure) {
+            pty_write(s->exec[i].failure);
+            pty_write_errno(err);
+        }
+    }
+    _exit(127);
+}
+
+// Starts the child of a session with vfork() (fork() when that fails). Returns its pid or -1.
+static pid_t spawn_in_pty(const struct pty_spawn *s) {
+    pid_t pid = vfork();
+    if (pid < 0) pid = fork();
+    if (pid == 0) pty_child(s);
+    return pid;
+}
+
+#ifndef CORTEX_HOST_TEST
+
+JNIEXPORT jintArray JNICALL
+Java_org_cortex_terminal_pty_PtyNative_createPty(
+    JNIEnv *env,
+    jclass clazz,
+    jstring cmdStr,
+    jobjectArray argsArray,
+    jobjectArray envArray,
+    jstring cwdStr,
+    jint rows,
+    jint cols,
+    jint widthPx,
+    jint heightPx
+) {
+    int masterFd = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC);
+    if (masterFd < 0) {
+        masterFd = posix_openpt(O_RDWR | O_NOCTTY);
+    }
+    if (masterFd < 0) {
+        LOGE("Failed to open ptmx: %s", strerror(errno));
+        return NULL;
+    }
+    fcntl(masterFd, F_SETFD, FD_CLOEXEC);
+
+    if (grantpt(masterFd) < 0) {
+        LOGE("Failed to grantpt: %s", strerror(errno));
+        close(masterFd);
+        return NULL;
+    }
+
+    if (unlockpt(masterFd) < 0) {
+        LOGE("Failed to unlockpt: %s", strerror(errno));
+        close(masterFd);
+        return NULL;
+    }
+
+    char slaveName[64];
+    if (ptsname_r(masterFd, slaveName, sizeof(slaveName)) != 0) {
+        LOGE("Failed to get ptsname: %s", strerror(errno));
+        close(masterFd);
+        return NULL;
+    }
+
+    struct winsize ws;
+    memset(&ws, 0, sizeof(ws));
+    ws.ws_row = (unsigned short)rows;
+    ws.ws_col = (unsigned short)cols;
+    ws.ws_xpixel = (unsigned short)widthPx;
+    ws.ws_ypixel = (unsigned short)heightPx;
+    ioctl(masterFd, TIOCSWINSZ, &ws);
+
+    // Prepare command and arguments
+    const char *cmd = (*env)->GetStringUTFChars(env, cmdStr, NULL);
+
+    int argCount = argsArray ? (*env)->GetArrayLength(env, argsArray) : 0;
+    char **argv = malloc(sizeof(char *) * (argCount + 2));
+    argv[0] = strdup(cmd);
+    for (int i = 0; i < argCount; i++) {
+        jstring arg = (jstring)(*env)->GetObjectArrayElement(env, argsArray, i);
+        const char *argChars = (*env)->GetStringUTFChars(env, arg, NULL);
+        argv[i + 1] = strdup(argChars);
+        (*env)->ReleaseStringUTFChars(env, arg, argChars);
+        (*env)->DeleteLocalRef(env, arg);
+    }
+    argv[argCount + 1] = NULL;
+
+    // Prepare environment variables
+    int envCount = envArray ? (*env)->GetArrayLength(env, envArray) : 0;
+    char **envp = malloc(sizeof(char *) * (envCount + 1));
+    for (int i = 0; i < envCount; i++) {
+        jstring envItem = (jstring)(*env)->GetObjectArrayElement(env, envArray, i);
+        const char *envChars = (*env)->GetStringUTFChars(env, envItem, NULL);
+        envp[i] = strdup(envChars);
+        (*env)->ReleaseStringUTFChars(env, envItem, envChars);
+        (*env)->DeleteLocalRef(env, envItem);
+    }
+    envp[envCount] = NULL;
+
+    const char *cwd = cwdStr ? (*env)->GetStringUTFChars(env, cwdStr, NULL) : NULL;
+
+    // Pre-calculate max_fd and pre-allocate child structures before fork()
+    long max_fd = sysconf(_SC_OPEN_MAX);
+    if (max_fd < 0) max_fd = 1024;
+    else if (max_fd > 65536) max_fd = 65536;
+
+    char **sys_env = clean_env_for_system(envp, envCount);
+
+    // The child process executes the app-owned PRoot launcher.
+    char cmd_failure[PATH_MAX + 64];
+    snprintf(cmd_failure, sizeof(cmd_failure), "Miauterm: failed to execute %s", cmd);
+    struct pty_spawn spawn;
+    memset(&spawn, 0, sizeof(spawn));
+    spawn.slave_name = slaveName;
+    spawn.cwd = cwd;
+    spawn.max_fd = (int)max_fd;
+    // The launcher is a host shell script. It sets PRoot's bundled loader paths before exec.
+    struct pty_exec direct = { cmd, argv, sys_env, cmd_failure };
+    spawn.exec[0] = direct;
+
+    struct timespec spawn_started, spawn_done;
+    clock_gettime(CLOCK_MONOTONIC, &spawn_started);
+    pid_t pid = spawn_in_pty(&spawn);
+    clock_gettime(CLOCK_MONOTONIC, &spawn_done);
+    LOGI("Session process %d started in %ld us", (int)pid,
+         (long)((spawn_done.tv_sec - spawn_started.tv_sec) * 1000000L + (spawn_done.tv_nsec - spawn_started.tv_nsec) / 1000));
+    if (pid < 0) {
+        LOGE("Failed to start the session: %s", strerror(errno));
+        close(masterFd);
+        if (sys_env && sys_env != envp) free(sys_env);
+        if (argv) {
+            for (int i = 0; i <= argCount; i++) {
+                free(argv[i]);
+            }
+            free(argv);
+        }
+        if (envp) {
+            for (int i = 0; i < envCount; i++) {
+                free(envp[i]);
+            }
+            free(envp);
+        }
+        (*env)->ReleaseStringUTFChars(env, cmdStr, cmd);
+        if (cwd) (*env)->ReleaseStringUTFChars(env, cwdStr, cwd);
+        return NULL;
+    }
+
+    // Parent cleanup
+    if (sys_env && sys_env != envp) {
+        free(sys_env);
+    }
+    for (int i = 0; i <= argCount; i++) {
+        free(argv[i]);
+    }
+    free(argv);
+
+    for (int i = 0; i < envCount; i++) {
+        free(envp[i]);
+    }
+    free(envp);
+
+    (*env)->ReleaseStringUTFChars(env, cmdStr, cmd);
+    if (cwd) (*env)->ReleaseStringUTFChars(env, cwdStr, cwd);
+
+
+    jintArray result = (*env)->NewIntArray(env, 2);
+    jint values[2] = { masterFd, pid };
+    (*env)->SetIntArrayRegion(env, result, 0, 2, values);
+    return result;
+}
+
+JNIEXPORT void JNICALL
+Java_org_cortex_terminal_pty_PtyNative_setPtyWindowSize(
+    JNIEnv *env,
+    jclass clazz,
+    jint masterFd,
+    jint rows,
+    jint cols,
+    jint widthPx,
+    jint heightPx
+) {
+    struct winsize ws;
+    memset(&ws, 0, sizeof(ws));
+    ws.ws_row = (unsigned short)rows;
+    ws.ws_col = (unsigned short)cols;
+    ws.ws_xpixel = (unsigned short)widthPx;
+    ws.ws_ypixel = (unsigned short)heightPx;
+    ioctl(masterFd, TIOCSWINSZ, &ws);
+}
+
+JNIEXPORT jint JNICALL
+Java_org_cortex_terminal_pty_PtyNative_waitForProcess(
+    JNIEnv *env,
+    jclass clazz,
+    jint pid
+) {
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno != EINTR) {
+            return -1;
+        }
+    }
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    } else if (WIFSIGNALED(status)) {
+        return -WTERMSIG(status);
+    }
+    return status;
+}
+
+JNIEXPORT void JNICALL
+Java_org_cortex_terminal_pty_PtyNative_killProcess(
+    JNIEnv *env,
+    jclass clazz,
+    jint pid,
+    jint sig
+) {
+    kill(pid, sig);
+}
+
+JNIEXPORT void JNICALL
+Java_org_cortex_terminal_pty_PtyNative_closeFd(
+    JNIEnv *env,
+    jclass clazz,
+    jint fd
+) {
+    if (fd >= 0) {
+        close(fd);
+    }
+}
+#endif /* !CORTEX_HOST_TEST */
+
+static int has_dotdot_component(const char *path) {
+    if (!path) return 0;
+    const char *p = path;
+    while (*p) {
+        while (*p == '/') p++;
+        if (!*p) break;
+        const char *end = p;
+        while (*end && *end != '/') end++;
+        if ((end - p) == 2 && p[0] == '.' && p[1] == '.') {
+            return 1;
+        }
+        p = end;
+    }
+    return 0;
+}
+
+static const char *strip_tar_prefix(const char *path) {
+    if (!path) return "";
+    const char *p = path;
+    while (*p) {
+        if (*p == '/') {
+            p++;
+        } else if (p[0] == '.' && p[1] == '/') {
+            p += 2;
+        } else if (p[0] == '.' && p[1] == '\0') {
+            p += 1;
+        } else {
+            break;
+        }
+    }
+    return p;
+}
+
+static int is_tar_path_unsafe(const char *path) {
+    if (!path || path[0] == '\0') return 0;
+    if (path[0] == '/') return 1;
+    if (has_dotdot_component(path)) return 1;
+    return 0;
+}
+
+static int is_symlink_target_safe(const char *rel_entry_path, const char *linkname) {
+    if (!rel_entry_path || !linkname || linkname[0] == '\0') return 0;
+
+    int absolute = linkname[0] == '/';
+    int depth = 0;
+    const char *p = rel_entry_path;
+    const char *last_slash = strrchr(rel_entry_path, '/');
+    if (!absolute && last_slash) {
+        while (p < last_slash) {
+            while (p < last_slash && *p == '/') p++;
+            if (p >= last_slash) break;
+            const char *end = p;
+            while (end < last_slash && *end != '/') end++;
+            size_t len = (size_t)(end - p);
+            if (len == 2 && p[0] == '.' && p[1] == '.') {
+                return 0;
+            } else if (len == 1 && p[0] == '.') {
+                /* ignore */
+            } else if (len > 0) {
+                depth++;
+            }
+            p = end;
+        }
+    }
+
+    p = linkname;
+    if (absolute) {
+        while (*p == '/') p++;
+    }
+    while (*p) {
+        while (*p == '/') p++;
+        if (!*p) break;
+        const char *end = p;
+        while (*end && *end != '/') end++;
+        size_t len = (size_t)(end - p);
+        if (len == 2 && p[0] == '.' && p[1] == '.') {
+            depth--;
+            if (depth < 0) return 0;
+        } else if (len == 1 && p[0] == '.') {
+            /* ignore */
+        } else if (len > 0) {
+            depth++;
+        }
+        p = end;
+    }
+
+    return 1;
+}
+
+// Linux absolute symlink targets are rooted inside the guest filesystem. Store them as relative
+// links so host-side tools never follow an extracted link into Android's filesystem.
+static int make_rootfs_symlink_target_relative(const char *rel_entry_path,
+                                               const char *linkname,
+                                               char *output,
+                                               size_t output_size) {
+    if (!rel_entry_path || !linkname || !output || output_size == 0) return -1;
+    if (linkname[0] != '/') {
+        size_t len = strlen(linkname);
+        if (len >= output_size) return -1;
+        memcpy(output, linkname, len + 1);
+        return 0;
+    }
+
+    size_t used = 0;
+    const char *last_slash = strrchr(rel_entry_path, '/');
+    if (last_slash) {
+        const char *p = rel_entry_path;
+        while (p < last_slash) {
+            while (p < last_slash && *p == '/') p++;
+            if (p >= last_slash) break;
+            const char *end = p;
+            while (end < last_slash && *end != '/') end++;
+            size_t len = (size_t)(end - p);
+            if (!(len == 1 && p[0] == '.')) {
+                if (used + 3 >= output_size) return -1;
+                memcpy(output + used, "../", 3);
+                used += 3;
+            }
+            p = end;
+        }
+    }
+
+    const char *target = linkname;
+    while (*target == '/') target++;
+    size_t target_len = strlen(target);
+    if (used + target_len >= output_size) return -1;
+    memcpy(output + used, target, target_len);
+    used += target_len;
+    if (used == 0) output[used++] = '.';
+    output[used] = '\0';
+    return 0;
+}
+
+static int is_within_dir(const char *real_root, const char *candidate) {
+    if (!real_root || !candidate) return 0;
+    size_t rlen = strlen(real_root);
+    if (rlen > 1 && real_root[rlen - 1] == '/') rlen--;
+    if (strncmp(candidate, real_root, rlen) != 0) return 0;
+    return (candidate[rlen] == '/' || candidate[rlen] == '\0');
+}
+
+static int mkdirs_for_path(const char *dest_dir, const char *dest_path) {
+    if (!dest_dir || !dest_path) return -1;
+
+    char real_dest_dir[PATH_MAX];
+    if (!realpath(dest_dir, real_dest_dir)) {
+        mkdir(dest_dir, 0755);
+        if (!realpath(dest_dir, real_dest_dir)) {
+            strncpy(real_dest_dir, dest_dir, sizeof(real_dest_dir) - 1);
+            real_dest_dir[sizeof(real_dest_dir) - 1] = '\0';
+        }
+    }
+
+    size_t dlen = strlen(dest_dir);
+    while (dlen > 1 && dest_dir[dlen - 1] == '/') dlen--;
+    if (strncmp(dest_path, dest_dir, dlen) != 0 || dest_path[dlen] != '/') {
+        return -1;
+    }
+
+    char temp[PATH_MAX];
+    size_t plen = strlen(dest_path);
+    if (plen >= sizeof(temp)) return -1;
+    memcpy(temp, dest_path, plen + 1);
+
+    for (char *p = temp + dlen + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            struct stat st;
+            if (lstat(temp, &st) == 0) {
+                if (S_ISLNK(st.st_mode)) {
+                    char link_buf[PATH_MAX];
+                    ssize_t llen = readlink(temp, link_buf, sizeof(link_buf) - 1);
+                    if (llen < 0) return -1;
+                    link_buf[llen] = '\0';
+                    if (link_buf[0] == '/' || has_dotdot_component(link_buf)) {
+                        return -1;
+                    }
+                    char resolved[PATH_MAX];
+                    if (!realpath(temp, resolved) || !is_within_dir(real_dest_dir, resolved)) {
+                        return -1;
+                    }
+                } else if (!S_ISDIR(st.st_mode)) {
+                    return -1;
+                }
+            } else {
+                if (mkdir(temp, 0755) != 0 && errno != EEXIST) {
+                    return -1;
+                }
+            }
+            *p = '/';
+        }
+    }
+    return 0;
+}
+
+static ssize_t read_full(int fd, void *buf, size_t count) {
+    size_t total = 0;
+    char *p = (char *)buf;
+    while (total < count) {
+        ssize_t n = read(fd, p + total, count - total);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (n == 0) break;
+        total += (size_t)n;
+    }
+    return (ssize_t)total;
+}
+
+static int verify_tar_checksum(const char *block) {
+    const unsigned char *u = (const unsigned char *)block;
+    const signed char *s = (const signed char *)block;
+    const char *chk_ptr = block + 148;
+    while (chk_ptr < block + 156 && (*chk_ptr == ' ' || *chk_ptr == '\t')) chk_ptr++;
+    if (chk_ptr >= block + 156 || *chk_ptr < '0' || *chk_ptr > '7') return 0;
+
+    char chk_buf[16];
+    size_t rem = (size_t)((block + 156) - chk_ptr);
+    if (rem >= sizeof(chk_buf)) rem = sizeof(chk_buf) - 1;
+    memcpy(chk_buf, chk_ptr, rem);
+    chk_buf[rem] = '\0';
+
+    char *endptr = NULL;
+    unsigned long expected = strtoul(chk_buf, &endptr, 8);
+    if (endptr == chk_buf) return 0;
+
+    unsigned long usum = 0;
+    long ssum = 0;
+    for (int i = 0; i < 512; i++) {
+        if (i >= 148 && i < 156) {
+            usum += ' ';
+            ssum += ' ';
+        } else {
+            usum += u[i];
+            ssum += s[i];
+        }
+    }
+    return (usum == expected || (ssum >= 0 && (unsigned long)ssum == expected));
+}
+
+static int parse_pax_headers(const char *buf, size_t len,
+                             char *out_path, size_t path_max,
+                             char *out_linkpath, size_t link_max,
+                             unsigned long long *out_size, int *has_size) {
+    size_t pos = 0;
+    while (pos < len) {
+        if (buf[pos] == '\0') break;
+        const char *rec = buf + pos;
+        size_t rem = len - pos;
+
+        size_t rec_len = 0;
+        size_t i = 0;
+        while (i < rem && rec[i] >= '0' && rec[i] <= '9') {
+            if (rec_len > (SIZE_MAX - 9) / 10) return -1;
+            rec_len = rec_len * 10 + (size_t)(rec[i] - '0');
+            i++;
+        }
+        if (i == 0 || i >= rem || rec[i] != ' ' || rec_len <= i + 1 || rec_len > rem) {
+            return -1;
+        }
+        if (rec[rec_len - 1] != '\n') {
+            return -1;
+        }
+
+        const char *kv = rec + i + 1;
+        size_t kv_len = rec_len - (i + 1) - 1;
+
+        if (kv_len >= 5 && strncmp(kv, "path=", 5) == 0) {
+            size_t vlen = kv_len - 5;
+            if (vlen >= path_max) return -1;
+            if (out_path) {
+                memcpy(out_path, kv + 5, vlen);
+                out_path[vlen] = '\0';
+            }
+        } else if (kv_len >= 9 && strncmp(kv, "linkpath=", 9) == 0) {
+            size_t vlen = kv_len - 9;
+            if (vlen >= link_max) return -1;
+            if (out_linkpath) {
+                memcpy(out_linkpath, kv + 9, vlen);
+                out_linkpath[vlen] = '\0';
+            }
+        } else if (kv_len >= 5 && strncmp(kv, "size=", 5) == 0) {
+            size_t vlen = kv_len - 5;
+            if (vlen == 0 || vlen >= 32) return -1;
+            unsigned long long parsed = 0;
+            for (size_t k = 0; k < vlen; k++) {
+                char c = kv[5 + k];
+                if (c < '0' || c > '9') return -1;
+                if (parsed > (ULLONG_MAX - 9ULL) / 10ULL) return -1;
+                parsed = parsed * 10ULL + (unsigned long long)(c - '0');
+            }
+            if (out_size) *out_size = parsed;
+            if (has_size) *has_size = 1;
+        }
+
+        pos += rec_len;
+    }
+    return 0;
+}
+
+#define TAR_COPY_BUF_SIZE 65536
+
+// What the extractor reads: a tar stream, or one compressed with zstd (the bootstrap archive is a
+// .tar.zst). The first four bytes tell which. A compressed one is decompressed by a thread of its
+// own into a pipe that the extractor reads, so that decompressing and writing the files go on side
+// by side (as the APK's inflate beside the extractor did before).
+typedef struct {
+    int fd;              // the tar stream: the fd given, or the read end of the decoder's pipe
+    unsigned char head[4];
+    size_t head_pos, head_len;
+    int compressed;
+    int in_fd;           // what the decoder reads
+    int pipe_w;          // and where it writes, closed by it when it is done
+    pthread_t decoder;
+    int decoder_running; // until joined
+    int decoded;         // the decoder's result: 0 when the stream was complete and undamaged
+} tar_source;
+
+static int write_full(int fd, const void *buf, size_t count) {
+    const unsigned char *p = (const unsigned char *)buf;
+    while (count > 0) {
+        ssize_t n = write(fd, p, count);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        p += n;
+        count -= (size_t)n;
+    }
+    return 0;
+}
+
+// Decompresses the zstd stream that starts with head (its first bytes, already read) and goes on in
+// in_fd into out_fd. 0 when it ended with a complete frame and every frame's checksum matched; -1
+// on a read, write or decompression error, or when it ends inside a frame.
+static int zstd_decompress_fd(int in_fd, const unsigned char *head, size_t head_len, int out_fd) {
+    ZSTD_DStream *zstd = ZSTD_createDStream();
+    size_t in_cap = ZSTD_DStreamInSize(), out_cap = ZSTD_DStreamOutSize();
+    unsigned char *in = malloc(in_cap), *out = malloc(out_cap);
+    int res = -1;
+    if (!zstd || !in || !out || in_cap < head_len) goto done;
+    ZSTD_initDStream(zstd);
+    memcpy(in, head, head_len);
+    size_t in_len = head_len;
+    size_t frame_left = 0; // ZSTD_decompressStream's last answer: 0 at the end of a frame
+    while (in_len > 0) {
+        ZSTD_inBuffer in_buf = { in, in_len, 0 };
+        int more;
+        do {
+            ZSTD_outBuffer out_buf = { out, out_cap, 0 };
+            size_t in_before = in_buf.pos;
+            size_t ret = ZSTD_decompressStream(zstd, &out_buf, &in_buf);
+            if (ZSTD_isError(ret)) {
+                LOGE("The archive cannot be decompressed (zstd error %d)", (int)ZSTD_getErrorCode(ret));
+                goto done;
+            }
+            // A call that neither read nor made anything answers that it expects a new frame: only
+            // the others tell whether the last frame is complete
+            if (in_buf.pos != in_before || out_buf.pos > 0) frame_left = ret;
+            // An error here: the extractor stopped and closed its end
+            if (out_buf.pos > 0 && write_full(out_fd, out, out_buf.pos) != 0) goto done;
+            // A full output buffer: zstd may have more of what it read
+            more = out_buf.pos == out_buf.size;
+        } while (in_buf.pos < in_buf.size || more);
+        ssize_t n;
+        do {
+            n = read(in_fd, in, in_cap);
+        } while (n < 0 && errno == EINTR);
+        if (n < 0) goto done;
+        in_len = (size_t)n;
+    }
+    if (frame_left != 0) {
+        LOGE("The compressed archive ends too early");
+        goto done;
+    }
+    res = 0;
+done:
+    if (zstd) ZSTD_freeDStream(zstd);
+    free(in);
+    free(out);
+    return res;
+}
+
+static void *tar_decoder_main(void *arg) {
+    tar_source *src = (tar_source *)arg;
+    // A write after the extractor stopped fails with EPIPE instead of ending the app
+    sigset_t pipe_signal;
+    sigemptyset(&pipe_signal);
+    sigaddset(&pipe_signal, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &pipe_signal, NULL);
+    src->decoded = zstd_decompress_fd(src->in_fd, src->head, src->head_len, src->pipe_w);
+    // The extractor reads the end of the stream
+    close(src->pipe_w);
+    return NULL;
+}
+
+static int tar_source_open(tar_source *src, int fd) {
+    memset(src, 0, sizeof(*src));
+    src->fd = fd;
+    src->in_fd = -1;
+    src->pipe_w = -1;
+    ssize_t n = read_full(fd, src->head, sizeof(src->head));
+    if (n < 0) return -1;
+    src->head_len = (size_t)n;
+    if (n != 4 || src->head[0] != 0x28 || src->head[1] != 0xB5 || src->head[2] != 0x2F || src->head[3] != 0xFD) return 0;
+    int p[2];
+    if (pipe2(p, O_CLOEXEC) != 0) return -1;
+#ifdef F_SETPIPE_SZ
+    // Fewer turns of the two threads (Android lets apps have pipes of up to 1 MB)
+    fcntl(p[1], F_SETPIPE_SZ, 1 << 20);
+#endif
+    src->compressed = 1;
+    src->in_fd = fd;
+    src->fd = p[0];
+    src->pipe_w = p[1];
+    if (pthread_create(&src->decoder, NULL, tar_decoder_main, src) != 0) {
+        LOGE("Cannot start the thread that decompresses the archive");
+        close(p[1]);
+        src->pipe_w = -1;
+        return -1;
+    }
+    src->decoder_running = 1;
+    return 0;
+}
+
+static void tar_source_close(tar_source *src) {
+    if (!src->compressed) return;
+    // A decoder that is not done yet stops at its next write
+    if (src->fd >= 0) close(src->fd);
+    src->fd = -1;
+    if (src->decoder_running) pthread_join(src->decoder, NULL);
+    src->decoder_running = 0;
+}
+
+// Like read_full: count bytes, fewer only at the end, -1 on a read error.
+static ssize_t tar_source_read(tar_source *src, void *buf, size_t count) {
+    unsigned char *p = (unsigned char *)buf;
+    size_t total = 0;
+    // A plain tar's first bytes (a compressed stream's are the decoder's)
+    if (!src->compressed) {
+        while (total < count && src->head_pos < src->head_len) p[total++] = src->head[src->head_pos++];
+    }
+    if (total == count) return (ssize_t)total;
+    ssize_t n = read_full(src->fd, p + total, count - total);
+    return n < 0 ? -1 : (ssize_t)(total + (size_t)n);
+}
+
+// After the archive's end marker, a compressed stream is decompressed to its end: zstd stores data
+// that does not compress as it is, which only the frame's checksum at the end covers, and it checks
+// that only when it gets there. 0 when the stream is complete and undamaged.
+static int tar_source_finish(tar_source *src) {
+    if (!src->compressed) return 0;
+    char rest[4096];
+    ssize_t n;
+    do {
+        n = read(src->fd, rest, sizeof(rest));
+    } while (n > 0 || (n < 0 && errno == EINTR));
+    if (n < 0) return -1;
+    // The decoder closed its end: it is done
+    pthread_join(src->decoder, NULL);
+    src->decoder_running = 0;
+    return src->decoded;
+}
+
+#ifndef CORTEX_HOST_TEST
+typedef JNIEnv *extract_env;
+#else
+typedef void *extract_env;
+#endif
+
+static int extract_tar_source(tar_source *src, const char *dest_dir, extract_env env, void *progress, void *progress_method);
+
+// Extracts the tar stream (or zstd-compressed tar stream) read from fd (a file or a pipe, which is
+// not closed) into dest_dir.
+static int extract_tar_fd(int fd, const char *dest_dir, extract_env env, void *progress, void *progress_method) {
+    if (fd < 0 || !dest_dir) return -1;
+    tar_source src;
+    int res = tar_source_open(&src, fd) == 0 ? extract_tar_source(&src, dest_dir, env, progress, progress_method) : -1;
+    if (res == 0 && tar_source_finish(&src) != 0) {
+        LOGE("The compressed archive is damaged");
+        res = -1;
+    }
+    tar_source_close(&src);
+    return res;
+}
+
+static int extract_tar_source(tar_source *src, const char *dest_dir, extract_env env, void *progress, void *progress_method) {
+    char *copy_buf = malloc(TAR_COPY_BUF_SIZE);
+    if (!copy_buf) {
+        return -1;
+    }
+
+    char block[512];
+    char long_name[PATH_MAX] = {0};
+    char long_link[PATH_MAX] = {0};
+    unsigned long long pax_size = 0;
+    // Android's SELinux policy refuses link() to apps: after the first refusal every hard link of
+    // the archive becomes a relative symlink right away (each refusal also writes an audit message).
+    int hard_links_allowed = 1;
+    int has_pax_size = 0;
+    unsigned int entry_count = 0;
+
+    for (;;) {
+        ssize_t hdr_n = tar_source_read(src, block, 512);
+        if (hdr_n == 0) break;
+        if (hdr_n != 512) {
+            free(copy_buf);
+            return -1;
+        }
+
+#ifndef CORTEX_HOST_TEST
+        if (env && progress && progress_method && (++entry_count % 32U) == 0) {
+            int percent = 12 + (int)((entry_count * 78U) / 5437U);
+            if (percent > 90) percent = 90;
+            (*env)->CallVoidMethod(env, (jobject)progress, (jmethodID)progress_method, (jint)percent);
+            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+        }
+#else
+        (void)entry_count;
+#endif
+
+        int all_zero = 1;
+        for (int i = 0; i < 512; i++) {
+            if (block[i] != 0) { all_zero = 0; break; }
+        }
+        if (all_zero) break;
+
+        if (!verify_tar_checksum(block)) {
+            LOGE("Tar header checksum verification failed");
+            free(copy_buf);
+            return -1;
+        }
+
+        unsigned long mode = strtoul(block + 100, NULL, 8);
+        if (mode == 0) mode = 0755;
+        unsigned long long size = strtoull(block + 124, NULL, 8);
+        char typeflag = block[156];
+
+        if (size > ULLONG_MAX - 511ULL) {
+            free(copy_buf);
+            return -1;
+        }
+
+        if (typeflag == 'L' || typeflag == 'K') {
+            char *dst_buf = (typeflag == 'L') ? long_name : long_link;
+            size_t dst_max = (typeflag == 'L') ? sizeof(long_name) : sizeof(long_link);
+            if (size == 0 || size >= dst_max) {
+                LOGE("Tar GNU LongName/LongLink size (%llu) exceeds PATH_MAX", size);
+                free(copy_buf);
+                return -1;
+            }
+            unsigned long long padded = ((size + 511ULL) / 512ULL) * 512ULL;
+            size_t pos = 0;
+            while (padded > 0) {
+                char dblock[512];
+                if (tar_source_read(src, dblock, 512) != 512) {
+                    free(copy_buf);
+                    return -1;
+                }
+                size_t rem_payload = (size > pos) ? (size_t)(size - pos) : 0;
+                size_t chunk = (rem_payload < 512) ? rem_payload : 512;
+                if (chunk > 0) {
+                    memcpy(dst_buf + pos, dblock, chunk);
+                    pos += chunk;
+                }
+                padded -= 512ULL;
+            }
+            dst_buf[pos] = '\0';
+            continue;
+        }
+
+        if (typeflag == 'x' || typeflag == 'g') {
+            if (size > 1024ULL * 1024ULL) {
+                free(copy_buf);
+                return -1;
+            }
+            unsigned long long padded = ((size + 511ULL) / 512ULL) * 512ULL;
+            char *pax_buf = malloc((size_t)padded + 1);
+            if (!pax_buf) {
+                free(copy_buf);
+                return -1;
+            }
+            if (tar_source_read(src, pax_buf, (size_t)padded) != (ssize_t)padded) {
+                free(pax_buf);
+                free(copy_buf);
+                return -1;
+            }
+            pax_buf[size] = '\0';
+            int rc = 0;
+            if (typeflag == 'x') {
+                rc = parse_pax_headers(pax_buf, (size_t)size,
+                                       long_name, sizeof(long_name),
+                                       long_link, sizeof(long_link),
+                                       &pax_size, &has_pax_size);
+            } else {
+                rc = parse_pax_headers(pax_buf, (size_t)size,
+                                       NULL, sizeof(long_name),
+                                       NULL, sizeof(long_link),
+                                       NULL, NULL);
+            }
+            free(pax_buf);
+            if (rc != 0) {
+                free(copy_buf);
+                return -1;
+            }
+            continue;
+        }
+
+        if (has_pax_size) {
+            size = pax_size;
+            has_pax_size = 0;
+            if (size > ULLONG_MAX - 511ULL) {
+                free(copy_buf);
+                return -1;
+            }
+        }
+
+        char name[PATH_MAX] = {0};
+        char linkname[PATH_MAX] = {0};
+
+        if (long_name[0] != '\0') {
+            strncpy(name, long_name, sizeof(name) - 1);
+            name[sizeof(name) - 1] = '\0';
+            long_name[0] = '\0';
+        } else {
+            if (strncmp(block + 257, "ustar", 5) == 0 && block[345] != '\0') {
+                snprintf(name, sizeof(name), "%.155s/%.100s", block + 345, block);
+            } else {
+                snprintf(name, sizeof(name), "%.100s", block);
+            }
+        }
+
+        if (long_link[0] != '\0') {
+            strncpy(linkname, long_link, sizeof(linkname) - 1);
+            linkname[sizeof(linkname) - 1] = '\0';
+            long_link[0] = '\0';
+        } else {
+            snprintf(linkname, sizeof(linkname), "%.100s", block + 157);
+        }
+
+        if (is_tar_path_unsafe(name)) {
+            LOGE("Tar-Slip security guard: rejecting unsafe entry name='%s'", name);
+            free(copy_buf);
+            return -1;
+        }
+
+        const char *rel = strip_tar_prefix(name);
+        if (*rel == '\0') {
+            unsigned long long padded = ((size + 511ULL) / 512ULL) * 512ULL;
+            while (padded > 0) {
+                size_t to_read = (padded < TAR_COPY_BUF_SIZE) ? (size_t)padded : TAR_COPY_BUF_SIZE;
+                if (tar_source_read(src, copy_buf, to_read) != (ssize_t)to_read) {
+                    free(copy_buf);
+                    return -1;
+                }
+                padded -= to_read;
+            }
+            continue;
+        }
+
+        char safe_linkname[PATH_MAX];
+        if (typeflag == '2' &&
+            (!is_symlink_target_safe(rel, linkname) ||
+             make_rootfs_symlink_target_relative(rel, linkname, safe_linkname, sizeof(safe_linkname)) != 0)) {
+            LOGE("Tar-Slip security guard: rejecting escaping symlink name='%s' -> '%s'", name, linkname);
+            free(copy_buf);
+            return -1;
+        }
+
+        if (typeflag == '1' && is_tar_path_unsafe(linkname)) {
+            LOGE("Tar-Slip security guard: rejecting unsafe hardlink name='%s' -> '%s'", name, linkname);
+            free(copy_buf);
+            return -1;
+        }
+
+        // A directory entry ends in '/': only its parents are checked below. The directory itself
+        // replaces whatever is in its place (a symlink is removed, never followed), so a link the
+        // app made before extracting (dev/shm) no longer fails the whole archive.
+        size_t rel_len = strlen(rel);
+        while (rel_len > 0 && rel[rel_len - 1] == '/') rel_len--;
+        char dest_path[PATH_MAX];
+        int dplen = snprintf(dest_path, sizeof(dest_path), "%s/%.*s", dest_dir, (int)rel_len, rel);
+        if (dplen < 0 || (size_t)dplen >= sizeof(dest_path)) {
+            free(copy_buf);
+            return -1;
+        }
+
+        if (mkdirs_for_path(dest_dir, dest_path) != 0) {
+            LOGE("Tar-Slip security guard: unsafe parent directory for '%s'", dest_path);
+            free(copy_buf);
+            return -1;
+        }
+
+        size_t nlen = strlen(name);
+        if (typeflag == '5' || (typeflag == '\0' && nlen > 0 && name[nlen - 1] == '/')) {
+            struct stat dst_st;
+            if (lstat(dest_path, &dst_st) == 0 && S_ISLNK(dst_st.st_mode)) {
+                unlink(dest_path);
+            }
+            mkdir(dest_path, mode & 0777);
+            chmod(dest_path, (mode & 0777) | 0700);
+        } else if (typeflag == '2') {
+            unlink(dest_path);
+            rmdir(dest_path);
+            if (symlink(safe_linkname, dest_path) != 0) {
+                free(copy_buf);
+                return -1;
+            }
+        } else if (typeflag == '1') {
+            const char *lrel = strip_tar_prefix(linkname);
+            if (*lrel == '\0' || has_dotdot_component(lrel)) {
+                free(copy_buf);
+                return -1;
+            }
+            char target_path[PATH_MAX];
+            int tplen = snprintf(target_path, sizeof(target_path), "%s/%s", dest_dir, lrel);
+            if (tplen < 0 || (size_t)tplen >= sizeof(target_path) ||
+                mkdirs_for_path(dest_dir, target_path) != 0) {
+                free(copy_buf);
+                return -1;
+            }
+            unlink(dest_path);
+            rmdir(dest_path);
+            int linked = 0;
+            if (hard_links_allowed) {
+                linked = link(target_path, dest_path) == 0;
+                if (!linked && (errno == EACCES || errno == EPERM)) hard_links_allowed = 0;
+            }
+            if (!linked) {
+                char rel_link[PATH_MAX] = {0};
+                size_t rpos = 0;
+                const char *rp = rel;
+                const char *last_slash = strrchr(rel, '/');
+                if (last_slash) {
+                    while (rp < last_slash) {
+                        while (rp < last_slash && *rp == '/') rp++;
+                        if (rp >= last_slash) break;
+                        const char *rend = rp;
+                        while (rend < last_slash && *rend != '/') rend++;
+                        if ((rend - rp) > 0 && !((rend - rp) == 1 && rp[0] == '.')) {
+                            if (rpos + 3 >= sizeof(rel_link)) {
+                                free(copy_buf);
+                                return -1;
+                            }
+                            memcpy(rel_link + rpos, "../", 3);
+                            rpos += 3;
+                        }
+                        rp = rend;
+                    }
+                }
+                size_t lrel_len = strlen(lrel);
+                if (rpos + lrel_len >= sizeof(rel_link)) {
+                    free(copy_buf);
+                    return -1;
+                }
+                memcpy(rel_link + rpos, lrel, lrel_len + 1);
+                if (symlink(rel_link, dest_path) != 0) {
+                    free(copy_buf);
+                    return -1;
+                }
+            }
+        } else {
+            unlink(dest_path);
+            rmdir(dest_path);
+            int out_fd = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, (mode & 0777) | 0600);
+            if (out_fd < 0) {
+                free(copy_buf);
+                return -1;
+            }
+            unsigned long long rem_data = size;
+            unsigned long long total_to_read = ((size + 511ULL) / 512ULL) * 512ULL;
+
+            while (total_to_read > 0) {
+                size_t to_read = (total_to_read < TAR_COPY_BUF_SIZE) ? (size_t)total_to_read : TAR_COPY_BUF_SIZE;
+                if (tar_source_read(src, copy_buf, to_read) != (ssize_t)to_read) {
+                    close(out_fd);
+                    free(copy_buf);
+                    return -1;
+                }
+                total_to_read -= to_read;
+
+                size_t to_write = (rem_data < (unsigned long long)to_read) ? (size_t)rem_data : to_read;
+                if (to_write > 0) {
+                    size_t written = 0;
+                    while (written < to_write) {
+                        ssize_t w = write(out_fd, copy_buf + written, to_write - written);
+                        if (w < 0) {
+                            if (errno == EINTR) continue;
+                            close(out_fd);
+                            free(copy_buf);
+                            return -1;
+                        }
+                        if (w == 0) {
+                            close(out_fd);
+                            free(copy_buf);
+                            return -1;
+                        }
+                        written += (size_t)w;
+                    }
+                    rem_data -= to_write;
+                }
+            }
+
+            // The archive's mode, plus read and write for the owner: the files are meant for root,
+            // and here the app's user stands in for root.
+            fchmod(out_fd, (mode & 0777) | 0600);
+            close(out_fd);
+        }
+    }
+
+    free(copy_buf);
+    return 0;
+}
+
+static int extract_tar_archive(const char *tar_path, const char *dest_dir, extract_env env, void *progress, void *progress_method) {
+    if (!tar_path || !dest_dir) return -1;
+    int fd = open(tar_path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    int res = extract_tar_fd(fd, dest_dir, env, progress, progress_method);
+    close(fd);
+    return res;
+}
+
+#ifndef CORTEX_HOST_TEST
+JNIEXPORT jint JNICALL
+Java_org_cortex_terminal_pty_PtyNative_extractTar(
+    JNIEnv *env,
+    jclass clazz,
+    jstring tarPathStr,
+    jstring destDirStr,
+    jobject progress
+) {
+    (void)clazz;
+    const char *tarPath = (*env)->GetStringUTFChars(env, tarPathStr, NULL);
+    const char *destDir = (*env)->GetStringUTFChars(env, destDirStr, NULL);
+    jclass progressClass = (*env)->GetObjectClass(env, progress);
+    jmethodID progressMethod = (*env)->GetMethodID(env, progressClass, "onProgress", "(I)V");
+
+    int res = extract_tar_archive(tarPath, destDir, env, (void *)progress, (void *)progressMethod);
+
+    (*env)->ReleaseStringUTFChars(env, tarPathStr, tarPath);
+    (*env)->ReleaseStringUTFChars(env, destDirStr, destDir);
+    return res;
+}
+
+// Extracts the tar stream the app writes into a pipe (fd stays the caller's), so the archive need
+// not be copied to a file first.
+JNIEXPORT jint JNICALL
+Java_org_cortex_terminal_pty_PtyNative_extractTarFd(
+    JNIEnv *env,
+    jclass clazz,
+    jint fd,
+    jstring destDirStr
+) {
+    (void)clazz;
+    const char *destDir = (*env)->GetStringUTFChars(env, destDirStr, NULL);
+    int res = extract_tar_fd(fd, destDir, NULL, NULL, NULL);
+    (*env)->ReleaseStringUTFChars(env, destDirStr, destDir);
+    return res;
+}
+#endif /* !CORTEX_HOST_TEST */

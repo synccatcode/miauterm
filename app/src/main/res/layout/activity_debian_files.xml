@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/filesRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/cortex_bg">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/filesToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/cortex_bar"
+        android:title="@string/files_title"
+        android:titleTextColor="@color/cortex_text_primary" />
+
+    <TextView
+        android:id="@+id/filesPath"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="2dp"
+        android:textColor="@color/cortex_primary"
+        android:textSize="12sp"
+        android:fontFamily="monospace"
+        android:maxLines="1"
+        android:ellipsize="middle" />
+
+    <TextView
+        android:id="@+id/filesSummary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="10dp"
+        android:textColor="@color/cortex_text_secondary"
+        android:textSize="12sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/cortex_outline_variant" />
+
+    <TextView
+        android:id="@+id/filesEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:padding="32dp"
+        android:text="@string/files_empty"
+        android:textColor="@color/cortex_text_secondary"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/filesList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp" />
+</LinearLayout>
