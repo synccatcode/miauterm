@@ -1,7 +1,6 @@
 package org.cortex.terminal.runtime
 
 import android.annotation.SuppressLint
-import android.os.Build
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
@@ -36,132 +35,97 @@ object ElfLinkerPatcher {
 
     @SuppressLint("NewApi")
     internal fun isSymlink(file: File): Boolean {
-        if (Build.VERSION.SDK_INT > 0) {
-            return try {
-                val st = Os.lstat(file.absolutePath)
-                if (st != null) {
-                    OsConstants.S_ISLNK(st.st_mode)
-                } else {
-                    java.nio.file.Files.isSymbolicLink(file.toPath())
-                }
-            } catch (_: ErrnoException) {
-                false
-            } catch (_: Throwable) {
-                try {
-                    java.nio.file.Files.isSymbolicLink(file.toPath())
-                } catch (_: Throwable) {
-                    false
-                }
-            }
-        }
         return try {
-            java.nio.file.Files.isSymbolicLink(file.toPath())
-        } catch (_: Throwable) {
+            val st = Os.lstat(file.absolutePath)
+            if (st != null) {
+                OsConstants.S_ISLNK(st.st_mode)
+            } else {
+                java.nio.file.Files.isSymbolicLink(file.toPath())
+            }
+        } catch (_: ErrnoException) {
             false
+        } catch (_: Throwable) {
+            try {
+                java.nio.file.Files.isSymbolicLink(file.toPath())
+            } catch (_: Throwable) {
+                false
+            }
         }
     }
 
     @SuppressLint("NewApi")
     internal fun readSymlink(file: File): String? {
-        if (Build.VERSION.SDK_INT > 0) {
-            return try {
-                val target = Os.readlink(file.absolutePath)
-                target ?: java.nio.file.Files.readSymbolicLink(file.toPath()).toString()
-            } catch (_: ErrnoException) {
-                null
-            } catch (_: Throwable) {
-                try {
-                    java.nio.file.Files.readSymbolicLink(file.toPath()).toString()
-                } catch (_: Throwable) {
-                    null
-                }
-            }
-        }
         return try {
-            java.nio.file.Files.readSymbolicLink(file.toPath()).toString()
-        } catch (_: Throwable) {
+            val target = Os.readlink(file.absolutePath)
+            target ?: java.nio.file.Files.readSymbolicLink(file.toPath()).toString()
+        } catch (_: ErrnoException) {
             null
+        } catch (_: Throwable) {
+            try {
+                java.nio.file.Files.readSymbolicLink(file.toPath()).toString()
+            } catch (_: Throwable) {
+                null
+            }
         }
     }
 
     @SuppressLint("NewApi")
     internal fun createSymlink(target: String, linkFile: File): Boolean {
-        if (Build.VERSION.SDK_INT > 0) {
-            return try {
-                Os.symlink(target, linkFile.absolutePath)
-                true
-            } catch (_: ErrnoException) {
-                false
-            } catch (_: Throwable) {
-                try {
-                    java.nio.file.Files.createSymbolicLink(
-                        linkFile.toPath(),
-                        java.nio.file.Paths.get(target)
-                    )
-                    true
-                } catch (_: Throwable) {
-                    false
-                }
-            }
-        }
         return try {
-            java.nio.file.Files.createSymbolicLink(
-                linkFile.toPath(),
-                java.nio.file.Paths.get(target)
-            )
+            Os.symlink(target, linkFile.absolutePath)
             true
-        } catch (_: Throwable) {
+        } catch (_: ErrnoException) {
             false
+        } catch (_: Throwable) {
+            try {
+                java.nio.file.Files.createSymbolicLink(
+                    linkFile.toPath(),
+                    java.nio.file.Paths.get(target)
+                )
+                true
+            } catch (_: Throwable) {
+                false
+            }
         }
     }
 
     @SuppressLint("NewApi")
     internal fun deleteIfExists(file: File): Boolean {
-        if (Build.VERSION.SDK_INT > 0) {
-            return try {
-                Os.remove(file.absolutePath)
-                true
-            } catch (_: ErrnoException) {
-                false
-            } catch (_: Throwable) {
-                try {
-                    java.nio.file.Files.deleteIfExists(file.toPath())
-                } catch (_: Throwable) {
-                    file.delete()
-                }
-            }
-        }
         return try {
-            java.nio.file.Files.deleteIfExists(file.toPath())
+            Os.remove(file.absolutePath)
+            true
+        } catch (_: ErrnoException) {
+            false
         } catch (_: Throwable) {
-            file.delete()
+            try {
+                java.nio.file.Files.deleteIfExists(file.toPath())
+            } catch (_: Throwable) {
+                file.delete()
+            }
         }
     }
 
     @SuppressLint("NewApi")
     internal fun atomicReplace(src: File, dst: File): Boolean {
-        if (Build.VERSION.SDK_INT > 0) {
-            return try {
-                Os.rename(src.absolutePath, dst.absolutePath)
-                true
-            } catch (_: ErrnoException) {
-                try {
-                    deleteIfExists(dst)
-                    if (src.renameTo(dst)) {
-                        true
-                    } else {
-                        src.copyTo(dst, overwrite = true)
-                        src.delete()
-                        true
-                    }
-                } catch (_: Throwable) {
-                    false
+        return try {
+            Os.rename(src.absolutePath, dst.absolutePath)
+            true
+        } catch (_: ErrnoException) {
+            try {
+                deleteIfExists(dst)
+                if (src.renameTo(dst)) {
+                    true
+                } else {
+                    src.copyTo(dst, overwrite = true)
+                    src.delete()
+                    true
                 }
             } catch (_: Throwable) {
-                moveOnHostFallback(src, dst)
+                false
             }
+        } catch (_: Throwable) {
+            moveOnHostFallback(src, dst)
         }
-        return moveOnHostFallback(src, dst)
     }
 
     @SuppressLint("NewApi")

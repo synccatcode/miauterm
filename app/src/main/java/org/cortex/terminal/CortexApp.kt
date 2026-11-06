@@ -3,6 +3,7 @@ package org.cortex.terminal
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
+import java.util.concurrent.atomic.AtomicInteger
 
 class CortexApp : Application() {
     override fun onCreate() {
@@ -10,11 +11,11 @@ class CortexApp : Application() {
         LocaleHelper.applySaved(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: Activity) {
-                startedActivities++
+                startedActivities.incrementAndGet()
             }
 
             override fun onActivityStopped(activity: Activity) {
-                if (startedActivities > 0) startedActivities--
+                startedActivities.decrementAndGet()
             }
 
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -29,11 +30,10 @@ class CortexApp : Application() {
     }
 
     companion object {
-        @Volatile
-        private var startedActivities = 0
+        private val startedActivities = AtomicInteger(0)
 
         /** True while any Cortex screen is visible; used to skip notifications the user would just see. */
         val isInForeground: Boolean
-            get() = startedActivities > 0
+            get() = startedActivities.get() > 0
     }
 }

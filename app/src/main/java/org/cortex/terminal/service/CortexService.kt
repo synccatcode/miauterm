@@ -30,12 +30,14 @@ class CortexService : Service() {
         const val ACTION_COPY_LINK = "org.cortex.terminal.action.COPY_LINK"
         const val EXTRA_LINK = "org.cortex.terminal.extra.LINK"
 
+        @Volatile
         var instance: CortexService? = null
             private set
 
         private var _sessionManager: SessionManager? = null
         private var lastVersionCode: Int = 0
 
+        @Synchronized
         fun getOrCreateSessionManager(context: Context): SessionManager {
             val appVersion = try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

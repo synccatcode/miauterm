@@ -29,7 +29,12 @@ object DebianBackup {
         ZipOutputStream(BufferedOutputStream(output)).use { zip ->
             zip.setLevel(6)
             fun visit(file: File, relative: String) {
-                val stat = Os.lstat(file.absolutePath)
+                val stat = try {
+                    Os.lstat(file.absolutePath)
+                } catch (_: Exception) {
+                    // File disappeared between traversal and stat; skip it.
+                    return
+                }
                 val mode = stat.st_mode
                 val type = mode and OsConstants.S_IFMT
                 val item = JSONObject().put("path", relative).put("mode", mode)

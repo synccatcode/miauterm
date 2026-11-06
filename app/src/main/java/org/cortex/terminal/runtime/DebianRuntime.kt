@@ -312,10 +312,14 @@ object DebianRuntime {
 
     private fun verifyProotStartsBash(context: Context, root: File) {
         val launcher = shellCommand(context)
+        val shell = shellPath(root)
+            ?: throw IllegalStateException(
+                "Cannot verify PRoot startup: no executable shell found in ${root.absolutePath}"
+            )
         val args = arrayOf(
             "--link2symlink", "--kill-on-exit", "--rootfs=${root.absolutePath}",
             "--root-id", "--pwd=/root",
-            "/" + shellPath(root)!!.relativeTo(root).invariantSeparatorsPath,
+            "/" + shell.relativeTo(root).invariantSeparatorsPath,
             "-c",
             "/usr/sbin/useradd --help >/dev/null && " +
                 "/usr/sbin/groupadd --help >/dev/null && " +

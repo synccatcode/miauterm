@@ -6,6 +6,8 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.StateListDrawable
 import org.cortex.terminal.emulator.TerminalColor
+import kotlin.math.pow
+import kotlin.math.roundToInt
 
 /**
  * The colors of everything around the terminal (the tabs, the keys, the drawer, the system bars),
@@ -66,7 +68,7 @@ object Chrome {
         // look; only the text of the interface is moved, as far as it needs, away from the surfaces.
         val away = if (dark) WHITE else BLACK
         val surfaces = listOf(bg, bar, raised, raisedHigh, accentSoft, dangerSoft)
-        val worst = if (dark) surfaces.maxByOrNull { luminance(it) }!! else surfaces.minByOrNull { luminance(it) }!!
+        val worst = if (dark) (surfaces.maxByOrNull { luminance(it) } ?: bg) else (surfaces.minByOrNull { luminance(it) } ?: bg)
         val accent = readable(ansi[12], worst, 3f, away)
         return Palette(
             bg = bg,
@@ -101,9 +103,9 @@ object Chrome {
     fun mix(a: Int, b: Int, t: Float): Int {
         val f = t.coerceIn(0f, 1f)
         return rgb(
-            Math.round(red(a) + (red(b) - red(a)) * f),
-            Math.round(green(a) + (green(b) - green(a)) * f),
-            Math.round(blue(a) + (blue(b) - blue(a)) * f)
+            (red(a) + (red(b) - red(a)) * f).roundToInt(),
+            (green(a) + (green(b) - green(a)) * f).roundToInt(),
+            (blue(a) + (blue(b) - blue(a)) * f).roundToInt()
         )
     }
 
@@ -114,7 +116,7 @@ object Chrome {
     fun luminance(color: Int): Float {
         fun channel(v: Int): Float {
             val s = v / 255f
-            return if (s <= 0.03928f) s / 12.92f else Math.pow(((s + 0.055f) / 1.055f).toDouble(), 2.4).toFloat()
+            return if (s <= 0.03928f) s / 12.92f else ((s + 0.055f) / 1.055f).toDouble().pow(2.4).toFloat()
         }
         return 0.2126f * channel(red(color)) + 0.7152f * channel(green(color)) + 0.0722f * channel(blue(color))
     }

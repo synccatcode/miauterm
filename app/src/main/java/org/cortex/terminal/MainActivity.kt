@@ -41,6 +41,7 @@ import org.cortex.terminal.view.showInChrome
 class MainActivity : AppCompatActivity() {
 
     companion object {
+        @Volatile
         var instance: MainActivity? = null
             private set
 

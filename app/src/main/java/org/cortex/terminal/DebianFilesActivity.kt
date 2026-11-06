@@ -95,8 +95,12 @@ class DebianFilesActivity : AppCompatActivity() {
     }
 
     private fun isInsideRoot(file: File): Boolean {
-        val path = file.canonicalFile.path
-        return path == root.path || path.startsWith(root.path + File.separator)
+        return try {
+            val path = file.canonicalFile.path
+            path == root.path || path.startsWith(root.path + File.separator)
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun showDirectory() {
