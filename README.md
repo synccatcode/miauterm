@@ -4,7 +4,7 @@
 
 <h1 align="center">Miauterm</h1>
 
-<p align="center">An Android terminal running a bundled Debian ARM64 root filesystem via PRoot — forked from Cortex Terminal.</p>
+<p align="center">An unofficial fork of Cortex Terminal that runs a bundled Debian ARM64 userland via PRoot.</p>
 
 <p align="center">
   <a href="https://github.com/synccatcode/miauterm/releases/latest"><img alt="Download APK" src="https://img.shields.io/badge/Download-APK-168f79?style=for-the-badge&logo=android&logoColor=white"></a>
@@ -13,17 +13,17 @@
 
 ---
 
-Miauterm is a fork of [Cortex Terminal](https://github.com/ssfuisu/cortex). It packages and launches a bundled Debian ARM64 userland through PRoot inside Android app storage without requiring root privileges or manual setup scripts.
+Miauterm is an **unofficial fork** of [Cortex Terminal](https://github.com/ssfuisu/cortex). It is maintained independently and is not affiliated with, endorsed by, or an official release of the upstream Cortex project.
 
 ---
 
 ## Overview
 
-Miauterm builds on the architecture established by Cortex Terminal, maintaining a ready-to-use Debian environment that initializes directly on device launch.
+Miauterm inherits the terminal emulation engine, UI chrome, and session management framework from Cortex Terminal, but completely replaces the execution backend and guest OS:
 
-* **Fork of Cortex Terminal:** Retains upstream terminal and engine foundations under the Apache 2.0 license while maintaining localized improvements, configurations, and release management.
-* **Bundled Debian userland:** An interactive Debian shell with `apt`, package management, and basic utilities available immediately after installation.
-* **No device root required:** Uses PRoot to simulate root privileges and virtualize filesystem paths in user space, leaving Android system partitions untouched.
+* **Upstream Cortex Terminal Foundation:** Retains the core VT/xterm emulator, PTY JNI bridge, session lifecycle, and Material UI under the Apache 2.0 license.
+* **Debian Userland via PRoot:** Instead of upstream's native Ubuntu environment, Miauterm bundles a pre-packaged Debian 13 (Trixie) ARM64 root filesystem launched inside PRoot in private app storage.
+* **No Root Required:** Operates entirely within the standard Android application sandbox without elevated device privileges.
 
 ---
 
@@ -49,34 +49,30 @@ Using PRoot instead of Cortex's zero-virtualization approach involves clear trad
 
 ---
 
-## Features & Upstream Capabilities
+## Feature Breakdown: Upstream Cortex vs. Miauterm Additions
 
-The terminal emulation core and application framework are provided by Cortex Terminal, including:
+To be completely transparent about what belongs to upstream Cortex Terminal and what was added or modified in this fork:
 
-### Terminal & Engine
-* xterm-256color terminal emulator supporting Unicode, wide characters, and sextant block elements.
-* Live in-terminal search bar with next/previous navigation and match counter.
-* Pinch-to-zoom font scaling with persistent size retention.
-* Tap-to-copy URL detection directly from the output buffer.
-* OSC 52 clipboard write support for terminal programs (tmux, Neovim).
+### Features Inherited from Upstream Cortex Terminal
+The following core terminal features, architecture, and UI components are built directly upon upstream Cortex Terminal:
+* **Terminal Emulator Engine:** Full xterm-256color terminal engine supporting Unicode, wide character rendering, and sextant block elements.
+* **Session Management:** Concurrent terminal session tabs, navigation drawer, and session persistence across app lifecycle restarts.
+* **Native PTY Bridge:** Custom JNI PTY connector (`cortex-pty.c`) and embedded zstd decompression decoder.
+* **Interactive UI & Themes:** Theming engine (Catppuccin, Nord, Solarized, etc.), pinch-to-zoom text scaling, tap-to-copy URL detection, and OSC 52 clipboard support.
+* **Foreground Service & Local Servers:** Background terminal service with wake lock toggle and automatic detection of localhost web servers started inside the guest.
 
-### Sessions & Background
-* Concurrent terminal sessions managed through a top tab strip or navigation drawer.
-* Session restoration preserving directory context and recent buffer history.
-* Background execution support with wake lock toggle and notifications for long-running commands.
-* Local HTTP server detection notifying when ports open on localhost.
-* Configurable login user selection from `/etc/passwd`.
-
-### Extra Keys Toolbar
-* Configurable keyboard toolbar with latching modifiers (CTRL, ALT) and function keys.
-* Editable layout stored at `~/.config/miauterm/keys` (nested JSON format) with an in-app visual editor in Settings.
-* Dynamic reload support via `miauterm-cmd run keysreload`.
-
-### System & Storage Management
-* Built-in Linux file manager with file editing and permission viewing.
-* Optional shared folder access mounting Android `Download` and `Documents` into `~/android/`.
-* Backup and restore utility exporting Debian files, permissions, and symlinks to a structured ZIP archive.
-* Failsafe recovery shell and diagnostic logging tools for troubleshooting.
+### Features Added / Modified in Miauterm
+The following features, modifications, and system utilities were specifically introduced in Miauterm:
+* **PRoot Runtime Integration:** Complete replacement of upstream native Ubuntu execution with the bundled PRoot arm64-v8a binary and loader (`libtalloc`, `libandroid-shmem`).
+* **Debian ARM64 Packaging & Management:** Bundled Debian rootfs packaging script (`package-debian-rootfs.sh`), sanitize pipeline (`sanitize-rootfs-tar.py`), and rootfs re-installation/reset system.
+* **Debian Backup & Restore:** Complete backup export and restore mechanism (`DebianBackup.kt`) that archives Linux files, symlinks, and file modes into a structured ZIP archive.
+* **Linux File Manager (`DebianFilesActivity.kt`):** A dedicated graphical file browser for navigating, previewing, and editing files inside the Debian root filesystem directly from the drawer.
+* **Failsafe Console:** A dedicated failsafe mode (`pendingFailsafeSession`) that drops into an uncontained Android shell in app-private storage for diagnosing broken rootfs states.
+* **PRoot Diagnostic Logging:** System in Settings to capture, view (`view_proot_log`), and clear detailed PRoot debug traces.
+* **Shared Storage Permissions:** Controlled integration for mounting Android's `Download` and `Documents` folders into `~/android/Download` and `~/android/Documents`.
+* **Dynamic Linker Syscall Patching (`ElfLinkerPatcher.kt`):** Runtime binary patching targeting incompatible syscalls (`set_robust_list`, `clone3`, `rseq`) on Android kernels.
+* **In-app Extra Keys Visual Editor:** Settings UI to visually add, edit, and validate extra key combinations in `~/.config/miauterm/keys` with instant CLI reload support (`miauterm-cmd run keysreload`).
+* **Offline First-Boot Installer:** Automated local extraction and verification flow on first launch with progress reporting.
 
 ---
 
