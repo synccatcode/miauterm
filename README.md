@@ -29,7 +29,7 @@ Miauterm inherits the terminal emulation engine, UI chrome, and session manageme
 
 ## Upstream Focus vs. Miauterm Approach
 
-Both projects bundle their Linux root filesystem directly inside the application APK for an offline, ready-to-use first launch. However, their underlying execution architectures are fundamentally different:
+Both projects bundle their base Linux root filesystem directly inside the application APK, allowing the initial environment to unpack locally on first launch without downloading external bootstrap images. (Subsequent package installations and `apt update`, of course, still require an active internet connection). However, their underlying execution architectures are fundamentally different:
 
 * **Upstream Cortex Terminal:** Bundles **Ubuntu 24.04 LTS (Glibc 2.39)** and executes it natively using direct loader techniques with **zero PRoot, zero containers, and zero virtualization**, prioritizing raw native performance without syscall translation overhead.
 * **Miauterm Fork:** Replaces the native Ubuntu runner with a bundled **Debian ARM64 userland running via PRoot**. Miauterm trades raw execution speed for the consistent path virtualization and environment stability that PRoot provides across diverse Android devices and OEM kernels.
@@ -72,7 +72,7 @@ The following features, modifications, and system utilities were specifically in
 * **Shared Storage Permissions:** Controlled integration for mounting Android's `Download` and `Documents` folders into `~/android/Download` and `~/android/Documents`.
 * **Dynamic Linker Syscall Patching (`ElfLinkerPatcher.kt`):** Runtime binary patching targeting incompatible syscalls (`set_robust_list`, `clone3`, `rseq`) on Android kernels.
 * **In-app Extra Keys Visual Editor:** Settings UI to visually add, edit, and validate extra key combinations in `~/.config/miauterm/keys` with instant CLI reload support (`miauterm-cmd run keysreload`).
-* **Offline First-Boot Installer:** Automated local extraction and verification flow on first launch with progress reporting.
+* **Local First-Boot Extraction:** Automated local extraction and verification flow on first launch with progress reporting, unpackaging the bundled base rootfs directly without external bootstrap downloads.
 
 ---
 
