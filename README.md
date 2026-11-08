@@ -8,15 +8,12 @@
 
 <p align="center">
   <a href="https://github.com/synccatcode/miauterm/releases/latest"><img alt="Latest release version" src="https://img.shields.io/github/v/release/synccatcode/miauterm?style=for-the-badge&label=Latest%20release"></a>
-  <a href="https://github.com/synccatcode/miauterm/actions/workflows/build-apk.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/synccatcode/miauterm/build-apk.yml?event=workflow_dispatch&style=for-the-badge&label=Build%20status"></a>
   <img alt="Android ARM64" src="https://img.shields.io/badge/Android-arm64--v8a-3c7d5b?style=for-the-badge&logo=android&logoColor=white">
+  <a href="https://github.com/synccatcode/miauterm/actions/workflows/build-apk.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/synccatcode/miauterm/build-apk.yml?event=workflow_dispatch&style=for-the-badge&label=Build%20status"></a>
 </p>
 
-<details>
-<summary><sub>Project status: Experimental</sub></summary>
-
-The published APK is a test release for ARM64 Android devices. Runtime behavior and package compatibility can vary by device and Android version.
-</details>
+> **Project status: Experimental**<br>
+> The published APK is a test release for ARM64 Android devices. Runtime behavior and package compatibility can vary by device and Android version.
 
 Miauterm is an unofficial, experimental fork of [Cortex Terminal](https://github.com/ssfuisu/cortex). It retains upstream terminal and Android application code while replacing Cortex's native Ubuntu runtime with a Debian 13 (Trixie) ARM64 root filesystem launched through PRoot. Miauterm is an independent project and is not affiliated with or endorsed by the Cortex maintainers.
 
