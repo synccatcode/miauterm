@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/synccatcode/miauterm/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/synccatcode/miauterm?style=for-the-badge&label=Release"></a>
-  <a href="https://github.com/synccatcode/miauterm/actions/workflows/build-apk.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/synccatcode/miauterm/build-apk.yml?branch=main&style=for-the-badge&label=Build%20status"></a>
+  <a href="https://github.com/synccatcode/miauterm/actions/workflows/build-apk.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/synccatcode/miauterm/build-apk.yml?event=workflow_dispatch&style=for-the-badge&label=Build%20status"></a>
   <img alt="Android ARM64" src="https://img.shields.io/badge/Android-arm64--v8a-3c7d5b?style=for-the-badge&logo=android&logoColor=white">
   <img alt="Experimental project" src="https://img.shields.io/badge/Project-experimental-777777?style=for-the-badge">
 </p>
