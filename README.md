@@ -7,9 +7,12 @@
 <p align="center">An experimental Android terminal that runs Debian ARM64 in PRoot.</p>
 
 <p align="center">
-  <a href="https://github.com/synccatcode/miauterm/releases/latest"><img alt="Latest release version" src="https://img.shields.io/github/v/release/synccatcode/miauterm?style=for-the-badge&label=Latest%20release"></a>
-  <img alt="Android ARM64" src="https://img.shields.io/badge/Android-arm64--v8a-3c7d5b?style=for-the-badge&logo=android&logoColor=white">
-  <a href="https://github.com/synccatcode/miauterm/actions/workflows/build-apk.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/synccatcode/miauterm/build-apk.yml?event=workflow_dispatch&style=for-the-badge&label=Build%20status"></a>
+  <a href="https://github.com/synccatcode/miauterm/releases/latest"><img alt="Latest release version" src="https://img.shields.io/github/v/release/synccatcode/miauterm?style=for-the-badge&amp;label=Latest%20release"></a>
+  <img alt="Android ARM64" src="https://img.shields.io/badge/Android-arm64--v8a-3c7d5b?style=for-the-badge&amp;logo=android&amp;logoColor=white">
+</p>
+
+<p align="center">
+  <a href="https://github.com/synccatcode/miauterm/actions/workflows/build-apk.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/synccatcode/miauterm/build-apk.yml?event=workflow_dispatch&amp;style=for-the-badge&amp;label=Build%20status"></a>
 </p>
 
 > **Project status: Experimental**<br>
