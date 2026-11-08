@@ -1,0 +1,103 @@
+#!/bin/bash
+
+usage() {
+    cat <<'HELP'
+Usage:
+  miauterm-cmd --help
+  miauterm-cmd run <command> [argument ...]
+
+Commands:
+  info                    Show app, Android, and device details
+  battery                 Show battery status
+  notification             Post a notification
+  notification-remove      Remove a notification created by this app
+  clipboard-get            Print clipboard text
+  clipboard-set [text]     Set clipboard text (or read it from stdin)
+  toast [text]             Show a short message
+  vibrate [duration_ms]    Vibrate the device
+  open <path-or-url>        Open a file or URL with Android
+  share [text]             Open Android's share sheet
+  tts [text]               Speak text using Android text-to-speech
+  wakelock <action>         Manage the app's wake lock
+  network                  Show network status
+  keysreload               Reload extra keys from the Miauterm config
+  reloadfont               Reload the selected terminal font
+
+Examples:
+  miauterm-cmd run info
+  miauterm-cmd run reloadfont
+  miauterm-cmd run toast "Hello from Debian"
+HELP
+}
+
+fail() {
+    printf 'miauterm-cmd: %s\n' "$*" >&2
+    exit 2
+}
+
+invoked_as="${0##*/}"
+if [ "$invoked_as" = "notify-send" ]; then
+    if [ "$#" -eq 1 ] && [ "$1" = "--help" ]; then
+        printf 'Usage: notify-send <summary> [body]\n'
+        exit 0
+    fi
+    [ "$#" -ge 1 ] || fail "usage: notify-send <summary> [body]"
+    title="$1"
+    content=""
+    if [ "$#" -ge 2 ]; then
+        content="$2"
+    fi
+    [ "$#" -le 2 ] || fail "notify-send accepts a summary and optional body"
+    set -- run notification -t "$title" -c "$content"
+fi
+
+if [ "$#" -eq 1 ] && [ "$1" = "--help" ]; then
+    usage
+    exit 0
+fi
+[ "$#" -ge 2 ] && [ "$1" = "run" ] || fail "usage: miauterm-cmd run <command> [argument ...]"
+shift
+command="$1"
+shift
+[[ "$command" =~ ^[a-z][a-z0-9-]*$ ]] || fail "invalid command name"
+
+config="${MIAUTERM_CMD_CONFIG:-/run/miauterm-cmd/connection}"
+[ -r "$config" ] || fail "the Miauterm app command service is not available"
+read -r port token < "$config" || fail "cannot read the app command connection"
+[[ "$port" =~ ^[0-9]{1,5}$ ]] || fail "invalid app command connection"
+(( 10#$port > 0 && 10#$port <= 65535 )) || fail "invalid app command connection"
+[[ "$token" =~ ^[0-9a-f]{64}$ ]] || fail "invalid app command connection"
+
+stdin_file=""
+stdin_length=-1
+if [ ! -t 0 ]; then
+    stdin_file="$(mktemp "${TMPDIR:-/tmp}/miauterm-cmd.XXXXXX")" ||
+        fail "cannot create a temporary input file"
+    trap 'rm -f -- "$stdin_file"' EXIT
+    cat > "$stdin_file" || fail "cannot read standard input"
+    stdin_length="$(wc -c < "$stdin_file")" || fail "cannot measure standard input"
+fi
+
+if ! exec 3<>"/dev/tcp/127.0.0.1/$port"; then
+    fail "cannot connect to the Miauterm app command service"
+fi
+
+{
+    printf 'MIAUTERM-CMD 1\n%s\n%s\n%s\n' "$token" "$command" "$#"
+    for argument in "$@"; do
+        byte_count="$(printf '%s' "$argument" | wc -c)" || exit 1
+        printf '%s\n' "$byte_count"
+        printf '%s' "$argument"
+    done
+    if [ "$stdin_length" -lt 0 ]; then
+        printf '%s\n' -1
+    else
+        printf '%s\n' "$stdin_length"
+        cat "$stdin_file"
+    fi
+} >&3 || fail "could not send the app command"
+
+IFS= read -r status <&3 || fail "the Miauterm app command service did not respond"
+[[ "$status" =~ ^[0-9]+$ ]] || fail "invalid response from the Miauterm app command service"
+cat <&3
+exit "$status"
