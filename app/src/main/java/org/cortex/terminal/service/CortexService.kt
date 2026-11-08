@@ -382,7 +382,6 @@ class CortexService : Service() {
     override fun onDestroy() {
         localServers?.stop()
         localServers = null
-        org.cortex.terminal.api.ApiServer.stop(this)
         releaseWakeLock()
         instance = null
         super.onDestroy()
