@@ -6,14 +6,17 @@
 
 <p align="center">An experimental Android terminal that runs Debian ARM64 in PRoot.</p>
 
-<p align="center">
-  <a href="https://github.com/synccatcode/miauterm/releases/latest"><img alt="Latest release version" src="https://img.shields.io/github/v/release/synccatcode/miauterm?style=for-the-badge&amp;label=Latest%20release"></a>
-  <img alt="Android ARM64" src="https://img.shields.io/badge/Android-arm64--v8a-3c7d5b?style=for-the-badge&amp;logo=android&amp;logoColor=white">
-</p>
-
-<p align="center">
-  <a href="https://github.com/synccatcode/miauterm/actions/workflows/build-apk.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/synccatcode/miauterm/build-apk.yml?event=workflow_dispatch&amp;style=for-the-badge&amp;label=Build%20status"></a>
-</p>
+<table align="center">
+  <tbody>
+    <tr>
+      <td align="center"><a href="https://github.com/synccatcode/miauterm/releases/latest"><img alt="Latest release version" src="https://img.shields.io/github/v/release/synccatcode/miauterm?style=for-the-badge&amp;label=Latest%20release"></a></td>
+      <td align="center"><img alt="Android ARM64" src="https://img.shields.io/badge/Android-arm64--v8a-3c7d5b?style=for-the-badge&amp;logo=android&amp;logoColor=white"></td>
+    </tr>
+    <tr>
+      <td align="center" colspan="2"><a href="https://github.com/synccatcode/miauterm/actions/workflows/build-apk.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/synccatcode/miauterm/build-apk.yml?event=workflow_dispatch&amp;style=for-the-badge&amp;label=Build%20status"></a></td>
+    </tr>
+  </tbody>
+</table>
 
 > **Project status: Experimental**<br>
 > The published APK is a test release for ARM64 Android devices. Runtime behavior and package compatibility can vary by device and Android version.
