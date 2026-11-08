@@ -36,7 +36,7 @@ Miauterm takes a different route: it starts a Debian root filesystem under PRoot
 ## Features
 
 - Bundled Debian 13 ARM64 root filesystem with first-run extraction progress.
-- PRoot terminal sessions, a failsafe shell, and Debian reset and backup tools.
+- PRoot terminal sessions, a failsafe shell, and Debian reset, backup, and restore tools.
 - File browser for the app's Linux files, with file type and write-permission indicators.
 - Optional access to Android's Download and Documents folders. Access is off until enabled by the user.
 - Terminal themes, font selection, custom font reload, and configurable extra keys.
@@ -50,7 +50,8 @@ These features are implemented across Miauterm changes and retained Cortex compo
 
 | Requirement | Details |
 |---|---|
-| Android | Android 7.0 (API 24) or newer |
+| Android version | Android 7.0 (API 24) or newer |
+| Target SDK | 28 |
 | CPU architecture | `arm64-v8a` |
 | Linux distribution | Bundled Debian 13 (Trixie) ARM64 root filesystem |
 | App version | 0.1.0 |
@@ -77,7 +78,7 @@ Show the available app commands from a Debian shell:
 miauterm-cmd --help
 ```
 
-To reload the active terminal font after adding or replacing a custom font, run:
+For a custom font, place a readable TTF file at `~/.config/miauterm/font.ttf` in the selected Debian user's home, select **Custom Font** in Settings, then run this in the active terminal:
 
 ```sh
 miauterm-cmd run reloadfont
@@ -133,20 +134,32 @@ miauterm/
 │       │       ├── mipmap*/
 │       │       ├── values*/  # Strings and localized Android resources
 │       │       └── xml/
-│       └── test/java/org/cortex/terminal/  # App and runtime tests
+│       └── test/java/org/cortex/terminal/
+│           ├── api/
+│           ├── runtime/
+│           ├── service/
+│           ├── session/
+│           └── view/
 ├── core/
 │   └── terminal-engine/
+│       ├── build.gradle.kts
 │       └── src/
-│           ├── main/cpp/     # PTY bridge and Zstandard decoder
-│           ├── main/java/    # Terminal emulator and PTY interface
-│           └── test/java/   # Terminal engine tests
+│           ├── main/cpp/     # PTY bridge, CMake config, and Zstandard sources
+│           ├── main/java/org/cortex/terminal/
+│           │   ├── emulator/
+│           │   ├── pty/
+│           │   └── view/
+│           └── test/java/org/cortex/terminal/emulator/
 ├── docs/
 │   ├── images/
 │   └── SECURITY.md
 ├── gradle/
 │   ├── libs.versions.toml
 │   └── wrapper/
-├── scripts/                  # Debian rootfs packaging and validation
+├── scripts/
+│   ├── package-debian-rootfs.sh
+│   ├── sanitize-rootfs-tar.py
+│   └── verify-rootfs.sh
 ├── build.gradle.kts
 ├── gradle.properties
 ├── gradlew
