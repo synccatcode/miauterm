@@ -37,6 +37,20 @@ Miauterm takes a different route: it starts a Debian root filesystem under PRoot
 | Android root required | No | No |
 | Android security boundary | Android application sandbox | Android application sandbox; Linux users share the app's Android UID |
 
+## Compatibility trade-offs of PRoot
+
+PRoot lets Miauterm start Debian without Android root access, but it does not boot a second Linux kernel. It uses `ptrace` to present a guest filesystem and translate guest process requests to the Android host kernel. That design has practical limits; see the [PRoot overview](https://proot-me.github.io/) and [PRoot manual](https://github.com/proot-me/proot/blob/master/doc/proot/manual.rst).
+
+- **Some workloads run slower.** PRoot adds work while tracing processes and translating filesystem and system calls. Package installation, compilation, and commands that perform many small file operations can take longer than they would on a native Linux system. The impact depends on the command and device.
+- **Linux `root` is simulated.** A root shell inside Debian can manage the rootfs and install many packages, but it does not gain Android root privileges. PRoot fakes some identity and filesystem operations for compatibility; actions that require real kernel privileges, such as loading kernel modules or mounting a filesystem, remain unavailable or can fail.
+- **The Android kernel sets the limits.** Debian programs use the Android host kernel, not a Debian kernel. Software that depends on a particular kernel feature, device, mount, namespace, or cgroup may not work. A full machine boot with systemd and kernel-managed services is outside Miauterm's runtime model.
+- **Architecture support is limited to ARM64.** Miauterm bundles an ARM64 Debian rootfs and does not configure QEMU user-mode emulation for foreign binaries. Installing x86 or x86-64 packages therefore does not make their binaries runnable in this build.
+- **Tracing and nested runtimes can be restricted.** PRoot itself uses `ptrace`, so debuggers, profilers, nested PRoot environments, and container tools that need their own tracing or kernel features may have limitations.
+- **Networking belongs to the Android app.** Debian uses the app's network connection rather than a separate virtual network interface. Android VPN, DNS, firewall, and background restrictions can affect package downloads and other network commands.
+- **Linux users are not separate Android users.** Debian's root and regular users share Miauterm's Android app identity and private storage boundary. Creating a Debian user does not create a separate Android security sandbox. Miauterm shares only the selected Download and Documents folders when the user enables that access in Settings.
+
+Package compatibility therefore depends on the program's kernel requirements, architecture, and behavior under PRoot. A package installing successfully does not guarantee that every feature it provides will work on every Android device.
+
 ## Features
 
 - Bundled Debian 13 ARM64 root filesystem with first-run extraction progress.
