@@ -74,7 +74,7 @@ These features are implemented across Miauterm changes and retained Cortex compo
 | Target SDK | 28 |
 | CPU architecture | `arm64-v8a` |
 | Linux distribution | Bundled Debian 13 (Trixie) ARM64 root filesystem |
-| App version | 0.1.0 |
+| App version | 0.1.1 |
 
 Miauterm stores Debian inside its app-private files directory and extracts the bundled root filesystem on first start. Leave enough device storage for the extracted system and any packages you install. `apt update` and package installation require network access.
 
@@ -82,11 +82,11 @@ If enabled in Settings, only the selected Download and Documents locations are s
 
 ## Download
 
-Download the signed ARM64 APK from the [Miauterm v0.1.0 release](https://github.com/synccatcode/miauterm/releases/tag/v0.1.0):
+Download the signed ARM64 APK from the [Miauterm v0.1.1 release](https://github.com/synccatcode/miauterm/releases/tag/v0.1.1):
 
-- [Installable release APK](https://github.com/synccatcode/miauterm/releases/download/v0.1.0/Miauterm-v0.1.0-arm64.apk)
-- [Release APK SHA-256](https://github.com/synccatcode/miauterm/releases/download/v0.1.0/Miauterm-v0.1.0-arm64.apk.sha256)
-- [Debug APK](https://github.com/synccatcode/miauterm/releases/download/v0.1.0/Miauterm-arm64-debug.apk)
+- [Installable release APK](https://github.com/synccatcode/miauterm/releases/download/v0.1.1/Miauterm-v0.1.1-arm64.apk)
+- [Release APK SHA-256](https://github.com/synccatcode/miauterm/releases/download/v0.1.1/Miauterm-v0.1.1-arm64.apk.sha256)
+- [Debug APK](https://github.com/synccatcode/miauterm/releases/download/v0.1.1/Miauterm-arm64-debug.apk)
 
 The [Releases page](https://github.com/synccatcode/miauterm/releases) contains the current APKs and their checksums. The [Build APK workflow](https://github.com/synccatcode/miauterm/actions/workflows/build-apk.yml) runs rootfs validation and selected tests, builds ARM64 APKs, and verifies the release package before publishing it.
 
@@ -127,7 +127,7 @@ miauterm/
 ├── .github/
 │   ├── dependabot.yml
 │   ├── release-notes/
-│   │   └── v0.1.0.md
+│   │   └── v0.1.1.md
 │   └── workflows/
 │       └── build-apk.yml
 ├── app/

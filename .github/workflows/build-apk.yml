@@ -37,9 +37,9 @@ jobs:
       - name: Verify Debian commands and default home creation
         run: bash scripts/verify-rootfs.sh --net
       - name: Test terminal and Debian runtime
-        run: gradle --no-daemon :app:testDebugUnitTest --tests org.cortex.terminal.view.ExtraKeysLayoutTest --tests org.cortex.terminal.view.ExtraKeysConfigTest --tests org.cortex.terminal.view.ExtraKeysViewTest --tests org.cortex.terminal.view.TerminalInterfaceTest --tests org.cortex.terminal.session.SessionPromptTest --tests org.cortex.terminal.runtime.SharedFolderAccessTest --tests org.cortex.terminal.runtime.DebianRuntimeRootfsTest --tests org.cortex.terminal.runtime.DebianRuntimeDnsTest --tests org.cortex.terminal.runtime.MiautermCommandInstallerTest --tests org.cortex.terminal.api.ApiProtocolTest
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests org.cortex.terminal.view.ExtraKeysLayoutTest --tests org.cortex.terminal.view.ExtraKeysConfigTest --tests org.cortex.terminal.view.ExtraKeysViewTest --tests org.cortex.terminal.view.TerminalInterfaceTest --tests org.cortex.terminal.session.SessionPromptTest --tests org.cortex.terminal.runtime.SharedFolderAccessTest --tests org.cortex.terminal.runtime.DebianRuntimeRootfsTest --tests org.cortex.terminal.runtime.DebianRuntimeDnsTest --tests org.cortex.terminal.runtime.MiautermCommandInstallerTest --tests org.cortex.terminal.api.ApiProtocolTest --tests org.cortex.terminal.api.ApiServerStartupTest
       - name: Build installable arm64 APK
-        run: gradle --no-daemon :app:assembleDebug
+        run: ./gradlew --no-daemon :app:assembleDebug
       - name: Name the APK artifact
         run: |
           set -euo pipefail
@@ -113,7 +113,7 @@ jobs:
           echo "RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
       - name: Build signed release APK
-        run: gradle --no-daemon :app:assembleRelease
+        run: ./gradlew --no-daemon :app:assembleRelease
       - name: Verify and package direct APK download
         run: |
           set -euo pipefail
